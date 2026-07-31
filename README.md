@@ -16,11 +16,11 @@ en un dashboard web con login propio.
 
 El dashboard web usa Supabase Auth: cada fila de `movimientos` le pertenece a
 un `user_id` que tiene que coincidir con el usuario logueado (RLS). El bot de
-Telegram, en cambio, inserta usando la service role key (bypassea RLS) con el
-`chat_id` de Telegram como `user_id`. Por ahora esos dos mundos están
-desconectados a propósito: lo que carga el bot no va a aparecer en el
-dashboard hasta que decidamos cómo asociar tu chat de Telegram con tu cuenta
-de Supabase. Se resuelve cuando integremos el bot de nuevo.
+Telegram inserta usando la secret key (bypassea RLS), pero para que esas filas
+aparezcan en tu dashboard hay que decirle explícitamente con qué usuario de
+Supabase asociarlas — eso es lo que hace `TELEGRAM_USER_ID` (ver paso 3). Es un
+bot pensado para un solo usuario: además, `TELEGRAM_ALLOWED_CHAT_ID` hace que
+ignore cualquier mensaje que no venga de tu chat de Telegram.
 
 ## Setup
 
@@ -35,15 +35,19 @@ pasos y guardá el token que te da (`TELEGRAM_BOT_TOKEN`).
 2. Andá a **SQL Editor** y corré el contenido de [`supabase/schema.sql`](supabase/schema.sql)
    (es seguro re-ejecutarlo si ya lo corriste antes; reemplaza las policies de RLS por la
    versión que valida contra el usuario logueado).
-3. En **Project Settings > API** copiá:
+3. En **Project Settings > API Keys** copiá:
    - `Project URL` → `SUPABASE_URL` / `VITE_SUPABASE_URL`
-   - `anon public` key → `VITE_SUPABASE_ANON_KEY`
-   - `service_role` key → `SUPABASE_SERVICE_ROLE_KEY` (¡nunca la expongas en el frontend!)
+   - `publishable` key → `VITE_SUPABASE_PUBLISHABLE_KEY`
+   - `secret` key → `SUPABASE_SECRET_KEY` (¡nunca la expongas en el frontend!)
 4. En **Authentication > Providers**, confirmá que **Email** esté habilitado
    (viene así por default). Si querés poder registrarte y entrar al toque sin
    revisar el mail, en **Authentication > Sign In / Providers > Email** apagá
    "Confirm email" — si lo dejás prendido, después de registrarte tenés que
    confirmar por mail antes de poder loguearte.
+5. Registrate/logueate una vez en el dashboard web (paso 9), después andá a
+   **Authentication > Users** y copiá el UUID de tu usuario → `TELEGRAM_USER_ID`
+   (paso 3). Es el usuario al que se le van a atribuir los movimientos que
+   cargue el bot.
 
 ### 3. Variables de entorno
 
@@ -56,16 +60,23 @@ cp .env.example .env
 ```
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=      # opcional, cualquier string random propio
+TELEGRAM_ALLOWED_CHAT_ID=    # se completa en el paso 7, dejalo vacio por ahora
+TELEGRAM_USER_ID=            # UUID de tu usuario en Supabase (paso 2.5)
 ANTHROPIC_API_KEY=
 SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_SECRET_KEY=
 VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
+VITE_SUPABASE_PUBLISHABLE_KEY=
 ```
 
 No hay variables nuevas para el login: Supabase Auth usa el mismo cliente
-anon (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`) que ya se usa para leer
-`movimientos`.
+publishable (`VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`) que ya se
+usa para leer `movimientos`.
+
+`ANTHROPIC_API_KEY` — usá una key con poco saldo cargado (con $5 alcanza de
+sobra). El parseo usa `claude-haiku-4-5`, el modelo más barato de la familia,
+con `max_tokens: 300` y sin reintentos — cada mensaje cuesta una fracción de
+centavo, así que $5 rinden para miles de mensajes.
 
 ### 4. Instalar dependencias
 
@@ -104,13 +115,21 @@ del webhook en cualquier momento:
 curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
 ```
 
-### 7. Probar
+### 7. Restringir el bot a tu chat
 
-Escribile a tu bot en Telegram: `/start`, y después algo como `gasté 5000 en
-nafta`. Debería contestarte con la confirmación y el movimiento debería
-aparecer en el dashboard.
+Escribile `/start` a tu bot en Telegram. Te va a contestar con tu `chat id`.
+Copiá ese número en `TELEGRAM_ALLOWED_CHAT_ID` (local y en Vercel) y hacé un
+redeploy (`npx vercel --prod`). De ahí en adelante el bot solo va a responder
+a mensajes tuyos; cualquier otro chat solo recibe su propio chat id, sin poder
+cargar nada.
 
-### 8. Correr el dashboard en local
+### 8. Probar
+
+Escribile algo como `gasté 5000 en nafta`. Debería contestarte con la
+confirmación, y el movimiento debería aparecer en el dashboard (mismo usuario
+que pusiste en `TELEGRAM_USER_ID`).
+
+### 9. Correr el dashboard en local
 
 ```bash
 npm run dev
@@ -135,7 +154,7 @@ api/
   _lib/
     telegram.ts       # helper para mandar mensajes
     claudeParser.ts   # parseo de texto -> JSON con Claude
-    supabaseAdmin.ts  # cliente de Supabase con service role
+    supabaseAdmin.ts  # cliente de Supabase con la secret key
 shared/
   categories.ts       # lista cerrada de categorías/tipos
   types.ts            # tipos compartidos (Movimiento, ParsedMovimiento)

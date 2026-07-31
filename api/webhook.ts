@@ -47,9 +47,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const chatId = message.chat.id;
   const texto = message.text.trim();
 
+  // Bot privado: solo procesamos mensajes del chat_id configurado. Cualquier
+  // otro chat recibe su propio chat_id para que, si sos vos, lo puedas
+  // cargar en TELEGRAM_ALLOWED_CHAT_ID.
+  const allowedChatId = process.env.TELEGRAM_ALLOWED_CHAT_ID;
+  if (allowedChatId && String(chatId) !== allowedChatId) {
+    await sendMessage(chatId, `Este bot es privado.\n\nTu chat id es: ${chatId}`).catch(() => {});
+    res.status(200).send("OK");
+    return;
+  }
+
   try {
     if (texto.startsWith("/start")) {
-      await sendMessage(chatId, WELCOME);
+      await sendMessage(chatId, `${WELCOME}\n\nTu chat id es: ${chatId}`);
+      res.status(200).send("OK");
+      return;
+    }
+
+    const targetUserId = process.env.TELEGRAM_USER_ID;
+    if (!targetUserId) {
+      await sendMessage(chatId, "Falta configurar TELEGRAM_USER_ID en el servidor para poder guardar movimientos.");
       res.status(200).send("OK");
       return;
     }
@@ -66,7 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const { error: dbError } = await supabaseAdmin.from("movimientos").insert({
-      user_id: String(chatId),
+      user_id: targetUserId,
       tipo: parsed.tipo,
       monto: parsed.monto,
       categoria: parsed.categoria,
