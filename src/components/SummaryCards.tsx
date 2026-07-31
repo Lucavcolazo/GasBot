@@ -29,9 +29,9 @@ export function SummaryCards({ movimientos }: Props) {
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-px border border-white/15 bg-white/15 sm:grid-cols-3">
+    <div className="grid grid-cols-1 divide-y divide-white/10 border border-white/15 bg-white/10 shadow-lg shadow-black/20 backdrop-blur-xl sm:grid-cols-3 sm:divide-y-0 sm:divide-x">
       {cards.map((card) => (
-        <div key={card.label} className="bg-black p-5">
+        <div key={card.label} className="bg-transparent p-5">
           <p className="label-mono">{card.label}</p>
           <AnimatedAmount value={card.value} signed={card.signed} />
         </div>

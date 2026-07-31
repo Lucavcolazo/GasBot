@@ -1,4 +1,7 @@
+import type { CSSProperties } from "react";
 import { formatCurrency } from "../lib/aggregate.ts";
+
+type StaggerStyle = CSSProperties & { "--stagger-index"?: number };
 import { useCountUp } from "../hooks/useCountUp.ts";
 import { PencilIcon, PlusIcon, TrashIcon } from "./icons.tsx";
 import type { Ahorro } from "../../shared/types.ts";
@@ -35,10 +38,14 @@ export function AhorrosSection({ ahorros, onAdd, onEdit, onDelete }: Props) {
         <p className="font-mono text-sm text-white/50">Todavia no cargaste ningun ahorro.</p>
       ) : (
         <div className="space-y-2">
-          {ahorros.map((a) => {
+          {ahorros.map((a, i) => {
             const pct = a.meta ? Math.min(100, (a.monto_actual / a.meta) * 100) : null;
             return (
-              <div key={a.id} className="border border-white/15 p-3">
+              <div
+                key={a.id}
+                className="glass-inset stagger-item p-3"
+                style={{ "--stagger-index": Math.min(i, 6) } as StaggerStyle}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm text-white">{a.nombre}</p>
@@ -52,7 +59,7 @@ export function AhorrosSection({ ahorros, onAdd, onEdit, onDelete }: Props) {
                       type="button"
                       onClick={() => onEdit(a)}
                       aria-label="Editar"
-                      className="p-2 text-white/60 hover:text-white"
+                      className="p-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
                     >
                       <PencilIcon />
                     </button>
@@ -60,7 +67,7 @@ export function AhorrosSection({ ahorros, onAdd, onEdit, onDelete }: Props) {
                       type="button"
                       onClick={() => onDelete(a)}
                       aria-label="Borrar"
-                      className="p-2 text-white/60 hover:text-white"
+                      className="p-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
                     >
                       <TrashIcon />
                     </button>

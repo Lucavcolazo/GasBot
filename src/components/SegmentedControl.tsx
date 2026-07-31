@@ -7,7 +7,7 @@ interface Props<T extends string> {
 
 export function SegmentedControl<T extends string>({ options, value, onChange, labels }: Props<T>) {
   return (
-    <div className="flex border border-white">
+    <div className="flex border border-white/20 bg-white/5 p-1 backdrop-blur-sm">
       {options.map((option) => (
         <button
           key={option}

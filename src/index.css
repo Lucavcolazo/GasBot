@@ -5,7 +5,7 @@
 @layer base {
   html,
   body {
-    @apply bg-black text-white;
+    @apply text-white;
   }
 
   * {
@@ -13,9 +13,25 @@
   }
 }
 
+.app-background {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: #0a0a0a;
+  background-image: linear-gradient(180deg, rgba(8, 8, 10, 0.8) 0%, rgba(8, 8, 10, 0.62) 45%, rgba(8, 8, 10, 0.85) 100%),
+    url("/fondoUSD.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
 @layer components {
   .panel {
-    @apply border border-white/15 bg-black p-5;
+    @apply border border-white/15 bg-white/10 p-5 shadow-lg shadow-black/20 backdrop-blur-xl;
+  }
+
+  .glass-inset {
+    @apply border border-white/10 bg-white/5;
   }
 
   .label-mono {
@@ -27,19 +43,24 @@
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 border border-white px-4 py-2 font-mono text-xs uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 font-mono text-xs uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-40;
+    transition: transform 160ms ease-out, background-color 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
+  }
+
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
   }
 
   .btn-primary {
-    @apply btn bg-white text-black hover:bg-white/80;
+    @apply btn border border-white bg-white text-black hover:bg-white/80;
   }
 
   .btn-outline {
-    @apply btn bg-transparent text-white hover:bg-white hover:text-black;
+    @apply btn border border-white/30 bg-white/5 text-white backdrop-blur-sm hover:bg-white/15;
   }
 
   .btn-ghost {
-    @apply btn border-white/30 text-white/70 hover:border-white hover:text-white;
+    @apply btn border border-white/15 text-white/70 hover:border-white/30 hover:bg-white/5 hover:text-white;
   }
 
   .field-label {
@@ -47,11 +68,72 @@
   }
 
   .field-input {
-    @apply w-full border border-white/30 bg-black px-3 py-2 font-mono text-sm text-white placeholder:text-white/30 focus:border-white focus:outline-none;
+    @apply w-full border border-white/20 bg-white/5 px-3 py-2 font-mono text-sm text-white placeholder:text-white/30 transition-colors focus:border-white focus:bg-white/10 focus:outline-none;
   }
 
   .field-select {
     @apply field-input appearance-none;
+  }
+}
+
+/* Entrada de modales y popovers de tipo "vidrio": nace apenas por debajo de su
+   tamaño final (nunca desde scale(0)) para que se sienta como un material
+   real apareciendo, no un fade plano. */
+.glass-pop-enter {
+  animation: glass-pop-in 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes glass-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.glass-fade-enter {
+  animation: glass-fade-in 150ms ease-out;
+}
+
+@keyframes glass-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.glass-scrim-enter {
+  animation: glass-scrim-in 200ms ease-out;
+}
+
+@keyframes glass-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Stagger sutil para listas (filas de ahorros, movimientos). */
+.stagger-item {
+  animation: stagger-in 300ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+  animation-delay: calc(var(--stagger-index, 0) * 40ms);
+}
+
+@keyframes stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -105,7 +187,28 @@
 @media (prefers-reduced-motion: reduce) {
   .flying-bill-wing-left,
   .flying-bill-wing-right,
-  .flying-bill-body {
+  .flying-bill-body,
+  .glass-pop-enter,
+  .glass-fade-enter,
+  .glass-scrim-enter,
+  .stagger-item {
     animation: none;
+  }
+
+  .btn:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .app-background {
+    background-image: none;
+    background-color: #0a0a0a;
+  }
+
+  .panel,
+  .glass-inset {
+    backdrop-filter: none;
+    background-color: rgba(10, 10, 12, 0.92);
   }
 }

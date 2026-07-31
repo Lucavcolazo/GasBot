@@ -47,13 +47,17 @@ export function MovimientoForm({ userId, editing, onClose, onSaved }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-md">
-      <div className="w-full max-w-sm border border-white bg-black p-6">
+    <div className="glass-scrim-enter fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-md">
+      <div className="glass-pop-enter w-full max-w-sm border border-white/15 bg-white/10 p-6 shadow-2xl shadow-black/40 backdrop-blur-2xl">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="font-mono text-sm font-bold uppercase tracking-widest">
             {editing ? "Editar movimiento" : "Nuevo movimiento"}
           </h2>
-          <button type="button" onClick={onClose} className="font-mono text-xs text-white/50 hover:text-white">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-2 py-1 font-mono text-xs text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+          >
             [ cerrar ]
           </button>
         </div>
@@ -113,7 +117,9 @@ export function MovimientoForm({ userId, editing, onClose, onSaved }: Props) {
             />
           </div>
 
-          {error && <p className="border border-white/30 px-3 py-2 font-mono text-xs text-white/80">{error}</p>}
+          {error && (
+            <p className="border border-white/20 bg-white/5 px-3 py-2 font-mono text-xs text-white/80">{error}</p>
+          )}
 
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="btn-ghost flex-1">

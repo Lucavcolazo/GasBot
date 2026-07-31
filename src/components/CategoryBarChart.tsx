@@ -1,5 +1,6 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { groupByCategoria, formatCurrency, formatCompactCurrency } from "../lib/aggregate.ts";
+import { CHART_ACCENT, CHART_MONO_FONT, CHART_TOOLTIP_STYLE } from "../lib/chartTheme.ts";
 import type { Movimiento } from "../../shared/types.ts";
 
 interface Props {
@@ -20,12 +21,12 @@ export function CategoryBarChart({ movimientos }: Props) {
   return (
     <ResponsiveContainer width="100%" height={Math.max(288, data.length * 44)}>
       <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
-        <CartesianGrid strokeDasharray="2 4" stroke="#ffffff26" horizontal={false} />
+        <CartesianGrid strokeDasharray="2 4" stroke="#ffffff33" horizontal={false} />
         <XAxis
           type="number"
           stroke="#ffffff80"
           fontSize={11}
-          fontFamily="JetBrains Mono, monospace"
+          fontFamily={CHART_MONO_FONT}
           tickCount={4}
           tickFormatter={(v: number) => formatCompactCurrency(v)}
         />
@@ -34,23 +35,17 @@ export function CategoryBarChart({ movimientos }: Props) {
           dataKey="categoria"
           stroke="#ffffff80"
           fontSize={11}
-          fontFamily="JetBrains Mono, monospace"
+          fontFamily={CHART_MONO_FONT}
           width={80}
           tickFormatter={(v: string) => v.toUpperCase()}
         />
         <Tooltip
-          cursor={{ fill: "#ffffff0d" }}
+          cursor={{ fill: "#ffffff14" }}
           formatter={(value) => formatCurrency(Number(value))}
           labelFormatter={(label) => String(label).toUpperCase()}
-          contentStyle={{
-            background: "#000000",
-            border: "1px solid #ffffff",
-            borderRadius: 0,
-            fontFamily: "JetBrains Mono, monospace",
-            fontSize: 12,
-          }}
+          contentStyle={CHART_TOOLTIP_STYLE}
         />
-        <Bar dataKey="total" fill="#ffffff" maxBarSize={22} />
+        <Bar dataKey="total" fill={CHART_ACCENT} maxBarSize={22} />
       </BarChart>
     </ResponsiveContainer>
   );

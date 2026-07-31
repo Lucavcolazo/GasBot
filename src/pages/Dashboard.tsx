@@ -79,10 +79,10 @@ export function Dashboard() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen text-white">
       <Navbar />
 
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:max-w-7xl">
         {loading || ahorrosLoading ? (
           <DashboardSkeleton />
         ) : (
@@ -97,7 +97,7 @@ export function Dashboard() {
             </div>
 
             {error && (
-              <div className="mb-6 border border-white px-4 py-3 font-mono text-sm text-white">
+              <div className="mb-6 border border-white/20 bg-white/10 px-4 py-3 font-mono text-sm text-white backdrop-blur-md">
                 Error cargando movimientos: {error}
               </div>
             )}

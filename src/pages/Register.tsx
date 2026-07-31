@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { supabase } from "../lib/supabaseClient.ts";
+import { PasswordField } from "../components/PasswordField.tsx";
 
 interface Props {
   onSwitchToLogin: () => void;
@@ -25,74 +26,55 @@ export function Register({ onSwitchToLogin }: Props) {
     setRegistered(true);
   }
 
+  if (registered) {
+    return (
+      <div className="space-y-4">
+        <p className="label-mono mb-2">Crear cuenta</p>
+        <p className="font-mono text-sm text-white/80">
+          Cuenta creada. Si tu proyecto de Supabase pide confirmacion de email, revisa tu correo antes de iniciar
+          sesion.
+        </p>
+        <button type="button" onClick={onSwitchToLogin} className="btn-outline w-full">
+          Ir a iniciar sesion
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="font-mono text-2xl font-bold uppercase tracking-widest">GasBot</h1>
-          <p className="label-mono mt-2">Crear cuenta</p>
+    <div>
+      <p className="label-mono mb-6">Crear cuenta</p>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="field-label" htmlFor="email">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="field-input"
+            autoComplete="email"
+          />
+        </div>
+        <div>
+          <label className="field-label" htmlFor="password">
+            Contrasena
+          </label>
+          <PasswordField id="password" value={password} onChange={setPassword} autoComplete="new-password" minLength={6} />
         </div>
 
-        {registered ? (
-          <div className="panel space-y-4 text-center">
-            <p className="font-mono text-sm text-white/80">
-              Cuenta creada. Si tu proyecto de Supabase pide confirmacion de email, revisa tu correo antes de
-              iniciar sesion.
-            </p>
-            <button type="button" onClick={onSwitchToLogin} className="btn-outline w-full">
-              Ir a iniciar sesion
-            </button>
-          </div>
-        ) : (
-          <>
-            <form onSubmit={handleSubmit} className="panel space-y-4">
-              <div>
-                <label className="field-label" htmlFor="email">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="field-input"
-                  autoComplete="email"
-                />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="password">
-                  Contrasena
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="field-input"
-                  autoComplete="new-password"
-                />
-              </div>
-
-              {error && <p className="border border-white/30 px-3 py-2 font-mono text-xs text-white/80">{error}</p>}
-
-              <button type="submit" disabled={loading} className="btn-primary w-full">
-                {loading ? "Creando cuenta..." : "Crear cuenta"}
-              </button>
-            </form>
-
-            <button
-              type="button"
-              onClick={onSwitchToLogin}
-              className="mt-6 w-full font-mono text-xs uppercase tracking-widest text-white/50 hover:text-white"
-            >
-              Ya tenes cuenta? Inicia sesion
-            </button>
-          </>
+        {error && (
+          <p className="border border-white/20 bg-white/5 px-3 py-2 font-mono text-xs text-white/80">{error}</p>
         )}
-      </div>
+
+        <button type="submit" disabled={loading} className="btn-primary w-full">
+          {loading ? "Creando cuenta..." : "Crear cuenta"}
+        </button>
+      </form>
     </div>
   );
 }

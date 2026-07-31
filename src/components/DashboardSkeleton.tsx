@@ -11,9 +11,9 @@ export function DashboardSkeleton() {
         <Skeleton className="h-9 w-9 sm:w-36" />
       </div>
 
-      <div className="grid grid-cols-1 gap-px border border-white/15 bg-white/15 sm:grid-cols-3">
+      <div className="grid grid-cols-1 divide-y divide-white/10 border border-white/15 bg-white/10 shadow-lg shadow-black/20 backdrop-blur-xl sm:grid-cols-3 sm:divide-y-0 sm:divide-x">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="space-y-2 bg-black p-5">
+          <div key={i} className="space-y-2 bg-transparent p-5">
             <Skeleton className="h-3 w-16" />
             <Skeleton className="h-7 w-24" />
           </div>

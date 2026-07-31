@@ -34,7 +34,7 @@ export function MovimientosTable({ movimientos, onEdit, onDelete, resetKey }: Pr
       {/* Mobile: tarjetas apiladas con acciones como iconos */}
       <div className="space-y-2 sm:hidden">
         {rows.map((m) => (
-          <div key={m.id} className="border border-white/15 p-3">
+          <div key={m.id} className="glass-inset p-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm text-white">{m.descripcion ?? "-"}</p>
@@ -52,7 +52,7 @@ export function MovimientosTable({ movimientos, onEdit, onDelete, resetKey }: Pr
                 type="button"
                 onClick={() => onEdit(m)}
                 aria-label="Editar"
-                className="p-2 text-white/60 hover:text-white"
+                className="p-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <PencilIcon />
               </button>
@@ -60,7 +60,7 @@ export function MovimientosTable({ movimientos, onEdit, onDelete, resetKey }: Pr
                 type="button"
                 onClick={() => onDelete(m)}
                 aria-label="Borrar"
-                className="p-2 text-white/60 hover:text-white"
+                className="p-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <TrashIcon />
               </button>

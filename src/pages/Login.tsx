@@ -1,11 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { supabase } from "../lib/supabaseClient.ts";
+import { PasswordField } from "../components/PasswordField.tsx";
 
-interface Props {
-  onSwitchToRegister: () => void;
-}
-
-export function Login({ onSwitchToRegister }: Props) {
+export function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -21,58 +18,39 @@ export function Login({ onSwitchToRegister }: Props) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="font-mono text-2xl font-bold uppercase tracking-widest">GasBot</h1>
-          <p className="label-mono mt-2">Iniciar sesion</p>
+    <div>
+      <p className="label-mono mb-6">Iniciar sesion</p>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="field-label" htmlFor="email">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="field-input"
+            autoComplete="email"
+          />
+        </div>
+        <div>
+          <label className="field-label" htmlFor="password">
+            Contrasena
+          </label>
+          <PasswordField id="password" value={password} onChange={setPassword} autoComplete="current-password" />
         </div>
 
-        <form onSubmit={handleSubmit} className="panel space-y-4">
-          <div>
-            <label className="field-label" htmlFor="email">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="field-input"
-              autoComplete="email"
-            />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="password">
-              Contrasena
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="field-input"
-              autoComplete="current-password"
-            />
-          </div>
+        {error && (
+          <p className="border border-white/20 bg-white/5 px-3 py-2 font-mono text-xs text-white/80">{error}</p>
+        )}
 
-          {error && <p className="border border-white/30 px-3 py-2 font-mono text-xs text-white/80">{error}</p>}
-
-          <button type="submit" disabled={loading} className="btn-primary w-full">
-            {loading ? "Ingresando..." : "Ingresar"}
-          </button>
-        </form>
-
-        <button
-          type="button"
-          onClick={onSwitchToRegister}
-          className="mt-6 w-full font-mono text-xs uppercase tracking-widest text-white/50 hover:text-white"
-        >
-          No tenes cuenta? Registrate
+        <button type="submit" disabled={loading} className="btn-primary w-full">
+          {loading ? "Ingresando..." : "Ingresar"}
         </button>
-      </div>
+      </form>
     </div>
   );
 }
