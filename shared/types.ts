@@ -21,6 +21,21 @@ export interface Ahorro {
   created_at: string;
 }
 
+export interface Recordatorio {
+  id: string;
+  user_id: string;
+  nombre: string;
+  monto: number;
+  categoria: Categoria;
+  dia_vencimiento: number;
+  activo: boolean;
+  periodo_actual: string | null;
+  pagado: boolean;
+  notificado_3dias: boolean;
+  notificado_vencimiento: boolean;
+  created_at: string;
+}
+
 // Acciones que el bot de Telegram puede reconocer en un mensaje de texto.
 // Para editar/eliminar/agregar_ahorro, el "id" tiene que ser uno de los que
 // se le pasaron en el contexto (movimientos/ahorros recientes) — nunca se
@@ -37,6 +52,10 @@ export type AccionBot =
   | { accion: "consultar_ahorros" }
   | { accion: "consultar_categorias" }
   | { accion: "listar_movimientos"; tipo?: Tipo }
+  | { accion: "crear_recordatorio"; nombre: string; monto: number; categoria: Categoria; dia_vencimiento: number }
+  | { accion: "eliminar_recordatorio"; id: string }
+  | { accion: "marcar_pagado_recordatorio"; id: string }
+  | { accion: "listar_recordatorios" }
   | { accion: "no_entendido" };
 
 export interface ContextoMovimiento {
@@ -55,7 +74,17 @@ export interface ContextoAhorro {
   meta: number | null;
 }
 
+export interface ContextoRecordatorio {
+  id: string;
+  nombre: string;
+  monto: number;
+  categoria: Categoria;
+  dia_vencimiento: number;
+  pagado: boolean;
+}
+
 export interface ContextoBot {
   movimientos: ContextoMovimiento[];
   ahorros: ContextoAhorro[];
+  recordatorios: ContextoRecordatorio[];
 }

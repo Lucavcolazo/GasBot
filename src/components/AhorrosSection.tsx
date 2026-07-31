@@ -37,7 +37,7 @@ export function AhorrosSection({ ahorros, onAdd, onEdit, onDelete }: Props) {
       {ahorros.length === 0 ? (
         <p className="font-mono text-sm text-white/50">Todavia no cargaste ningun ahorro.</p>
       ) : (
-        <div className="space-y-2">
+        <div className="scroll-thin max-h-96 space-y-2 overflow-y-auto pr-1">
           {ahorros.map((a, i) => {
             const pct = a.meta ? Math.min(100, (a.monto_actual / a.meta) * 100) : null;
             return (

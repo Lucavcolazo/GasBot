@@ -128,6 +128,23 @@ export function EyeOffIcon({ className = "h-4 w-4" }: IconProps) {
   );
 }
 
+export function CheckIcon({ className = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
 export function PersonIcon({ className = "h-4 w-4" }: IconProps) {
   return (
     <svg

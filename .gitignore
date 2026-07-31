@@ -5,3 +5,10 @@ dist
 .env.local
 *.local
 .DS_Store
+
+# Skills instalados (se reinstalan desde skills-lock.json, no son fuente propia)
+.agents/skills
+.claude/skills
+
+# Config local de Claude Code, no compartida entre máquinas
+.claude/settings.local.json

@@ -99,3 +99,58 @@ create policy "ahorros_delete_own"
   on ahorros for delete
   to authenticated
   using ((select auth.uid())::text = user_id);
+
+-- Recordatorios: gastos fijos recurrentes (alquiler, servicios, etc.) con un
+-- dia de vencimiento en el mes. El cron de notificaciones (api/cron/recordatorios.ts)
+-- avisa por Telegram 3 dias antes y el dia del vencimiento, y resetea el
+-- estado de "pagado" cuando cambia el periodo (mes) actual.
+create table if not exists recordatorios (
+  id uuid default gen_random_uuid() primary key,
+  user_id text not null,
+  nombre text not null,
+  monto numeric not null check (monto > 0),
+  categoria text not null check (categoria in (
+    'comida', 'transporte', 'servicios', 'entretenimiento',
+    'salud', 'indumentaria', 'hogar', 'sueldo', 'otros'
+  )),
+  dia_vencimiento smallint not null check (dia_vencimiento between 1 and 31),
+  activo boolean not null default true,
+  -- Periodo (formato 'YYYY-MM') al que corresponde el estado pagado/notificado
+  -- de mas abajo. El cron lo compara contra el mes actual y resetea si cambio.
+  periodo_actual text,
+  pagado boolean not null default false,
+  notificado_3dias boolean not null default false,
+  notificado_vencimiento boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists recordatorios_user_id_activo_idx
+  on recordatorios (user_id, activo);
+
+alter table recordatorios enable row level security;
+
+drop policy if exists "recordatorios_select_own" on recordatorios;
+drop policy if exists "recordatorios_insert_own" on recordatorios;
+drop policy if exists "recordatorios_update_own" on recordatorios;
+drop policy if exists "recordatorios_delete_own" on recordatorios;
+
+create policy "recordatorios_select_own"
+  on recordatorios for select
+  to authenticated
+  using ((select auth.uid())::text = user_id);
+
+create policy "recordatorios_insert_own"
+  on recordatorios for insert
+  to authenticated
+  with check ((select auth.uid())::text = user_id);
+
+create policy "recordatorios_update_own"
+  on recordatorios for update
+  to authenticated
+  using ((select auth.uid())::text = user_id)
+  with check ((select auth.uid())::text = user_id);
+
+create policy "recordatorios_delete_own"
+  on recordatorios for delete
+  to authenticated
+  using ((select auth.uid())::text = user_id);

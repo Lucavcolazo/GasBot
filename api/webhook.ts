@@ -3,7 +3,9 @@ import { sendMessage, type TelegramUpdate } from "./_lib/telegram.js";
 import { interpretarMensaje } from "./_lib/claudeParser.js";
 import { supabaseAdmin } from "./_lib/supabaseAdmin.js";
 import { CATEGORIAS } from "../shared/categories.js";
-import type { ContextoAhorro, ContextoBot, ContextoMovimiento } from "../shared/types.js";
+import type { ContextoAhorro, ContextoBot, ContextoMovimiento, ContextoRecordatorio } from "../shared/types.js";
+import { estadoParaPeriodo, hoyArgentina, periodoKey } from "../shared/recordatorios.js";
+import { capitalize, formatMonto } from "./_lib/format.js";
 
 const WELCOME = `Hola. Soy GasBot.
 
@@ -13,16 +15,9 @@ Contame tus gastos e ingresos como si se lo dijeras a un amigo, por ejemplo:
 - "pagué 3200 de streaming"
 
 También puedo corregir o borrar algo que ya anotaste, manejar tus ahorros
-("guardé 5000 más para el auto", "quiero ahorrar para un celu, ya tengo 20000")
+("guardé 5000 más para el auto", "quiero ahorrar para un celu, ya tengo 20000"),
+tus gastos fijos ("recordame el alquiler el día 10, son 150000", "ya pagué el alquiler")
 y contarte tu balance o cómo van tus ahorros.`;
-
-function formatMonto(monto: number): string {
-  return monto.toLocaleString("es-AR", { maximumFractionDigits: 2 });
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 function haceTiempo(iso: string): string {
   const minutos = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -34,7 +29,7 @@ function haceTiempo(iso: string): string {
 }
 
 async function cargarContexto(userId: string): Promise<ContextoBot> {
-  const [{ data: movimientosRaw }, { data: ahorrosRaw }] = await Promise.all([
+  const [{ data: movimientosRaw }, { data: ahorrosRaw }, { data: recordatoriosRaw }] = await Promise.all([
     supabaseAdmin
       .from("movimientos")
       .select("id, tipo, monto, categoria, descripcion, created_at")
@@ -42,6 +37,11 @@ async function cargarContexto(userId: string): Promise<ContextoBot> {
       .order("created_at", { ascending: false })
       .limit(15),
     supabaseAdmin.from("ahorros").select("id, nombre, monto_actual, meta").eq("user_id", userId),
+    supabaseAdmin
+      .from("recordatorios")
+      .select("id, nombre, monto, categoria, dia_vencimiento, periodo_actual, pagado, notificado_3dias, notificado_vencimiento")
+      .eq("user_id", userId)
+      .eq("activo", true),
   ]);
 
   const movimientos: ContextoMovimiento[] = (movimientosRaw ?? []).map((m) => ({
@@ -60,7 +60,18 @@ async function cargarContexto(userId: string): Promise<ContextoBot> {
     meta: a.meta,
   }));
 
-  return { movimientos, ahorros };
+  const { year, month } = hoyArgentina();
+  const periodoActual = periodoKey(year, month);
+  const recordatorios: ContextoRecordatorio[] = (recordatoriosRaw ?? []).map((r) => ({
+    id: r.id,
+    nombre: r.nombre,
+    monto: r.monto,
+    categoria: r.categoria,
+    dia_vencimiento: r.dia_vencimiento,
+    pagado: estadoParaPeriodo(r, periodoActual).pagado,
+  }));
+
+  return { movimientos, ahorros, recordatorios };
 }
 
 async function calcularBalance(userId: string): Promise<{ ingresos: number; gastos: number }> {
@@ -336,6 +347,102 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           )
           .join("\n");
         await sendMessage(chatId, detalle);
+        break;
+      }
+
+      case "crear_recordatorio": {
+        const { error } = await supabaseAdmin.from("recordatorios").insert({
+          user_id: targetUserId,
+          nombre: accion.nombre,
+          monto: accion.monto,
+          categoria: accion.categoria,
+          dia_vencimiento: accion.dia_vencimiento,
+        });
+        if (error) {
+          console.error("Insert recordatorio error", error);
+          await sendMessage(chatId, "Hubo un problema creando el recordatorio, probá de nuevo.");
+          break;
+        }
+        await sendMessage(
+          chatId,
+          `Recordatorio creado: ${capitalize(accion.nombre)} - $${formatMonto(accion.monto)}, vence el día ${accion.dia_vencimiento} de cada mes. Te aviso 3 días antes y el día del vencimiento.`,
+        );
+        break;
+      }
+
+      case "eliminar_recordatorio": {
+        const recordatorio = contexto.recordatorios.find((r) => r.id === accion.id);
+        const { error } = await supabaseAdmin
+          .from("recordatorios")
+          .delete()
+          .eq("id", accion.id)
+          .eq("user_id", targetUserId);
+        if (error) {
+          console.error("Delete recordatorio error", error);
+          await sendMessage(chatId, "Hubo un problema borrando el recordatorio, probá de nuevo.");
+          break;
+        }
+        await sendMessage(
+          chatId,
+          recordatorio ? `Recordatorio borrado: ${capitalize(recordatorio.nombre)}` : "Recordatorio borrado.",
+        );
+        break;
+      }
+
+      case "marcar_pagado_recordatorio": {
+        const recordatorio = contexto.recordatorios.find((r) => r.id === accion.id);
+        if (!recordatorio) {
+          await sendMessage(chatId, "No encontré ese recordatorio, probá de nuevo.");
+          break;
+        }
+        const { year, month } = hoyArgentina();
+        const periodoActual = periodoKey(year, month);
+        const [{ error: updateError }, { error: insertError }] = await Promise.all([
+          supabaseAdmin
+            .from("recordatorios")
+            .update({
+              periodo_actual: periodoActual,
+              pagado: true,
+              notificado_3dias: false,
+              notificado_vencimiento: false,
+            })
+            .eq("id", accion.id)
+            .eq("user_id", targetUserId),
+          supabaseAdmin.from("movimientos").insert({
+            user_id: targetUserId,
+            tipo: "gasto",
+            monto: recordatorio.monto,
+            categoria: recordatorio.categoria,
+            descripcion: recordatorio.nombre,
+            mensaje_original: texto,
+          }),
+        ]);
+        if (updateError || insertError) {
+          console.error("Marcar pagado recordatorio error", updateError ?? insertError);
+          await sendMessage(chatId, "Hubo un problema marcando el recordatorio como pagado, probá de nuevo.");
+          break;
+        }
+        await sendMessage(
+          chatId,
+          `Marcado como pagado: ${capitalize(recordatorio.nombre)} - $${formatMonto(recordatorio.monto)}. También lo anoté como gasto.`,
+        );
+        break;
+      }
+
+      case "listar_recordatorios": {
+        if (contexto.recordatorios.length === 0) {
+          await sendMessage(chatId, "Todavía no tenés recordatorios cargados.");
+          break;
+        }
+        const detalleRecordatorios = contexto.recordatorios
+          .map(
+            (r) =>
+              `- ${capitalize(r.nombre)}: $${formatMonto(r.monto)} (${capitalize(r.categoria)}) - día ${r.dia_vencimiento} - ${
+                r.pagado ? "pagado este mes" : "pendiente"
+              }`,
+          )
+          .join("\n");
+        await sendMessage(chatId, detalleRecordatorios);
         break;
       }
     }

@@ -43,7 +43,19 @@ Acciones posibles (respondé ÚNICAMENTE con el JSON de UNA de estas formas, sin
 11. Pedir la lista de movimientos recientes (gastos y/o ingresos), por ejemplo "qué gasté", "en qué gasté esta semana", "mis últimos gastos", "qué ingresos tuve". "tipo" es opcional: omitilo si pide todo, usá "gasto" si pide solo gastos, "ingreso" si pide solo ingresos:
 {"accion": "listar_movimientos", "tipo": "gasto"|"ingreso" (opcional)}
 
-12. Si el mensaje no encaja claramente en ninguna de las anteriores, o hace referencia a algo que no aparece en las listas de contexto:
+12. Crear un recordatorio de gasto fijo mensual (el usuario menciona un gasto recurrente que quiere que le recuerde, como el alquiler, un servicio, una suscripción, con un día del mes en que vence). Si no da un día del mes, respondé "no_entendido":
+{"accion": "crear_recordatorio", "nombre": "...", "monto": number, "categoria": "...", "dia_vencimiento": number (1-31)}
+
+13. Borrar un recordatorio existente. Usá el "id" EXACTO de la lista de recordatorios de más abajo:
+{"accion": "eliminar_recordatorio", "id": "..."}
+
+14. Marcar como pagado un recordatorio de este mes (el usuario dice que ya pagó ese gasto fijo). Esto también anota el gasto como movimiento, así que no crees además un "crear_movimiento" para lo mismo. Usá el "id" EXACTO de la lista de recordatorios:
+{"accion": "marcar_pagado_recordatorio", "id": "..."}
+
+15. Pedir la lista de recordatorios / gastos fijos:
+{"accion": "listar_recordatorios"}
+
+16. Si el mensaje no encaja claramente en ninguna de las anteriores, o hace referencia a algo que no aparece en las listas de contexto:
 {"accion": "no_entendido"}
 
 Reglas:
@@ -59,6 +71,8 @@ Reglas:
   - Crear ahorro: "quiero ahorrar", "quiero juntar plata para", "arranco un fondo para", "estoy guardando para".
   - Agregar a ahorro: "guardé más", "sumá", "metí más plata", "aparté más".
   - Restar de ahorro: "usé plata de", "saqué del ahorro", "gasté lo que tenía ahorrado para".
+  - Crear recordatorio: "recordame pagar", "avisame cuando venza", "todos los meses pago", "quiero que me acuerdes de", "gasto fijo de".
+  - Marcar recordatorio pagado: "ya pagué el/la [recordatorio]", "pagué [recordatorio] de este mes", "listo, ya aboné [recordatorio]".
 - Respondé SIEMPRE con el objeto JSON solo: sin bloques de código markdown (nada de \`\`\`), sin explicaciones antes o después, sin pedir datos personales ni autenticación.
 
 Ejemplos:
@@ -80,6 +94,11 @@ Ejemplos:
 "qué gastos tengo" -> {"accion": "listar_movimientos", "tipo": "gasto"}
 "en qué gasté esta semana" -> {"accion": "listar_movimientos", "tipo": "gasto"}
 "mostrame mis últimos movimientos" -> {"accion": "listar_movimientos"}
+"recordame pagar el alquiler el día 10, son 150000" -> {"accion": "crear_recordatorio", "nombre": "alquiler", "monto": 150000, "categoria": "hogar", "dia_vencimiento": 10}
+"avisame del gimnasio el 5 de cada mes, sale 8000" -> {"accion": "crear_recordatorio", "nombre": "gimnasio", "monto": 8000, "categoria": "salud", "dia_vencimiento": 5}
+"ya pagué el alquiler" (con "alquiler" en la lista de recordatorios, id rec-1) -> {"accion": "marcar_pagado_recordatorio", "id": "rec-1"}
+"borrá el recordatorio del gimnasio" (con "gimnasio" en la lista, id rec-2) -> {"accion": "eliminar_recordatorio", "id": "rec-2"}
+"qué gastos fijos tengo" -> {"accion": "listar_recordatorios"}
 "hola como andas" -> {"accion": "no_entendido"}
 "borrá lo del cine" (sin nada de "cine" en la lista de movimientos) -> {"accion": "no_entendido"}`;
 
@@ -96,15 +115,29 @@ function buildSystemPrompt(contexto: ContextoBot): string {
         .join("\n")
     : "(sin ahorros cargados)";
 
+  const recordatoriosTexto = contexto.recordatorios.length
+    ? contexto.recordatorios
+        .map(
+          (r) =>
+            `- id=${r.id} | "${r.nombre}" | $${r.monto} | ${r.categoria} | vence el día ${r.dia_vencimiento} | ${
+              r.pagado ? "ya pagado este mes" : "pendiente este mes"
+            }`,
+        )
+        .join("\n")
+    : "(sin recordatorios cargados)";
+
   return `${BASE_PROMPT}
 
-CONTEXTO ACTUAL DEL USUARIO — usalo para resolver ediciones, borrados y referencias a nombres de ahorros. Nunca inventes un id que no esté acá:
+CONTEXTO ACTUAL DEL USUARIO — usalo para resolver ediciones, borrados y referencias a nombres de ahorros o recordatorios. Nunca inventes un id que no esté acá:
 
 Movimientos recientes:
 ${movimientosTexto}
 
 Ahorros:
-${ahorrosTexto}`;
+${ahorrosTexto}
+
+Recordatorios (gastos fijos):
+${recordatoriosTexto}`;
 }
 
 let client: Anthropic | null = null;
@@ -139,6 +172,7 @@ function validarAccion(raw: unknown, contexto: ContextoBot): AccionBot {
 
   const idEnMovimientos = typeof r.id === "string" && contexto.movimientos.some((m) => m.id === r.id);
   const idEnAhorros = typeof r.id === "string" && contexto.ahorros.some((a) => a.id === r.id);
+  const idEnRecordatorios = typeof r.id === "string" && contexto.recordatorios.some((rec) => rec.id === r.id);
 
   switch (r.accion) {
     case "crear_movimiento": {
@@ -192,6 +226,31 @@ function validarAccion(raw: unknown, contexto: ContextoBot): AccionBot {
       if (r.tipo !== undefined && !isTipo(r.tipo)) return { accion: "no_entendido" };
       return { accion: "listar_movimientos", tipo: isTipo(r.tipo) ? r.tipo : undefined };
     }
+    case "crear_recordatorio": {
+      const { nombre, monto, categoria, dia_vencimiento } = r;
+      if (typeof nombre !== "string" || nombre.trim().length === 0) return { accion: "no_entendido" };
+      if (!isCategoria(categoria)) return { accion: "no_entendido" };
+      if (typeof monto !== "number" || !Number.isFinite(monto) || monto <= 0) return { accion: "no_entendido" };
+      if (
+        typeof dia_vencimiento !== "number" ||
+        !Number.isInteger(dia_vencimiento) ||
+        dia_vencimiento < 1 ||
+        dia_vencimiento > 31
+      ) {
+        return { accion: "no_entendido" };
+      }
+      return { accion: "crear_recordatorio", nombre: nombre.trim(), monto, categoria, dia_vencimiento };
+    }
+    case "eliminar_recordatorio": {
+      if (!idEnRecordatorios) return { accion: "no_entendido" };
+      return { accion: "eliminar_recordatorio", id: r.id as string };
+    }
+    case "marcar_pagado_recordatorio": {
+      if (!idEnRecordatorios) return { accion: "no_entendido" };
+      return { accion: "marcar_pagado_recordatorio", id: r.id as string };
+    }
+    case "listar_recordatorios":
+      return { accion: "listar_recordatorios" };
     default:
       return { accion: "no_entendido" };
   }
