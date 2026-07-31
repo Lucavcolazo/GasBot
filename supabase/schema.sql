@@ -185,3 +185,72 @@ create policy "telegram_links_select_own"
   on telegram_links for select
   to authenticated
   using ((select auth.uid())::text = user_id);
+
+-- Rate limiting: guarda timestamps de mensajes por chat_id de Telegram
+-- para evitar que un usuario sature al bot. Solo el backend (service role)
+-- lee/escribe acá. RLS habilitado sin policies = deny-all para el frontend.
+create table if not exists rate_limit_messages (
+  id bigint generated always as identity primary key,
+  chat_id text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists rate_limit_messages_chat_id_created_at_idx
+  on rate_limit_messages (chat_id, created_at desc);
+
+alter table rate_limit_messages enable row level security;
+
+-- Función atómica: cuenta mensajes en la ventana, registra el nuevo
+-- si está dentro del límite, y limpia mensajes viejos (> 5 min).
+create or replace function check_rate_limit(
+  p_chat_id text,
+  p_window_seconds int,
+  p_max_messages int
+)
+returns json
+language plpgsql
+security invoker
+as $$
+declare
+  v_window_start timestamptz;
+  v_count int;
+  v_oldest timestamptz;
+  v_retry_after numeric;
+begin
+  v_window_start := now() - (p_window_seconds || ' seconds')::interval;
+
+  select count(*) into v_count
+  from rate_limit_messages
+  where chat_id = p_chat_id
+    and created_at > v_window_start;
+
+  if v_count >= p_max_messages then
+    select min(created_at) into v_oldest
+    from rate_limit_messages
+    where chat_id = p_chat_id
+      and created_at > v_window_start;
+
+    v_retry_after := extract(epoch from (v_oldest + (p_window_seconds || ' seconds')::interval - now()));
+    if v_retry_after < 1 then
+      v_retry_after := 1;
+    end if;
+
+    return json_build_object(
+      'allowed', false,
+      'current_count', v_count,
+      'retry_after_seconds', ceil(v_retry_after)
+    );
+  end if;
+
+  insert into rate_limit_messages (chat_id) values (p_chat_id);
+
+  delete from rate_limit_messages
+  where created_at < now() - interval '5 minutes';
+
+  return json_build_object(
+    'allowed', true,
+    'current_count', v_count + 1,
+    'retry_after_seconds', null
+  );
+end;
+$$;

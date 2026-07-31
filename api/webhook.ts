@@ -6,6 +6,7 @@ import { CATEGORIAS } from "../shared/categories.js";
 import type { ContextoAhorro, ContextoBot, ContextoMovimiento, ContextoRecordatorio } from "../shared/types.js";
 import { estadoParaPeriodo, hoyArgentina, periodoKey } from "../shared/recordatorios.js";
 import { capitalize, formatMonto } from "./_lib/format.js";
+import { checkRateLimit } from "./_lib/rateLimit.js";
 
 const WELCOME = `Hola. Soy GasBot.
 
@@ -195,6 +196,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const targetUserId = vinculo.user_id;
+
+    // Rate limit: 20 mensajes por minuto por chat.
+    const rateLimit = await checkRateLimit(chatIdStr);
+    if (!rateLimit.allowed) {
+      const segs = rateLimit.retryAfterSeconds ?? 60;
+      await sendMessage(
+        chatId,
+        `Tranqui, estás mandando muchos mensajes muy rápido. Esperá ${segs} segundos y probá de nuevo.`,
+      );
+      res.status(200).send("OK");
+      return;
+    }
+
     const contexto = await cargarContexto(targetUserId);
     const accion = await interpretarMensaje(texto, contexto);
 
