@@ -12,3 +12,7 @@ dist
 
 # Config local de Claude Code, no compartida entre máquinas
 .claude/settings.local.json
+
+# Config local de herramientas AI
+.mcp.json
+.claude/
