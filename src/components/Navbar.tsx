@@ -11,7 +11,7 @@ export function Navbar() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 px-4 py-4 drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)] sm:px-6">
+    <header className="fixed top-0 z-40 w-full bg-gradient-to-b from-[#0a0a0a] via-[#0a0a0a]/85 to-transparent px-4 pb-6 pt-4 sm:px-6">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 lg:max-w-7xl">
         <div className="flex items-center gap-2">
           <FlyingBillIcon className="h-6 w-9 text-white" />

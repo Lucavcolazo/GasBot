@@ -134,7 +134,7 @@ export function Dashboard() {
     <div className="min-h-screen text-white">
       <Navbar />
 
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:max-w-7xl">
+      <div className="mx-auto max-w-5xl px-4 pb-8 pt-20 sm:px-6 lg:max-w-7xl">
         {loading || ahorrosLoading || recordatoriosLoading ? (
           <DashboardSkeleton />
         ) : (
