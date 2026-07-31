@@ -1,4 +1,4 @@
-import type { Categoria, Moneda, Tipo } from "./categories.ts";
+import type { Categoria, Moneda, Tipo } from "./categories.js";
 
 export interface Movimiento {
   id: string;
@@ -21,11 +21,39 @@ export interface Ahorro {
   created_at: string;
 }
 
-export type ParsedMovimiento =
-  | {
-      tipo: Tipo;
-      monto: number;
-      categoria: Categoria;
-      descripcion: string;
-    }
-  | { error: "no_parseable" };
+// Acciones que el bot de Telegram puede reconocer en un mensaje de texto.
+// Para editar/eliminar/agregar_ahorro, el "id" tiene que ser uno de los que
+// se le pasaron en el contexto (movimientos/ahorros recientes) — nunca se
+// confia en un id inventado por el modelo.
+export type AccionBot =
+  | { accion: "crear_movimiento"; tipo: Tipo; monto: number; categoria: Categoria; descripcion: string }
+  | { accion: "editar_movimiento"; id: string; tipo: Tipo; monto: number; categoria: Categoria; descripcion: string }
+  | { accion: "eliminar_movimiento"; id: string }
+  | { accion: "crear_ahorro"; nombre: string; monto: number; meta?: number }
+  | { accion: "agregar_ahorro"; id: string; monto: number }
+  | { accion: "eliminar_ahorro"; id: string }
+  | { accion: "consultar_balance" }
+  | { accion: "consultar_ahorros" }
+  | { accion: "consultar_categorias" }
+  | { accion: "no_entendido" };
+
+export interface ContextoMovimiento {
+  id: string;
+  tipo: Tipo;
+  monto: number;
+  categoria: Categoria;
+  descripcion: string | null;
+  hace: string;
+}
+
+export interface ContextoAhorro {
+  id: string;
+  nombre: string;
+  monto_actual: number;
+  meta: number | null;
+}
+
+export interface ContextoBot {
+  movimientos: ContextoMovimiento[];
+  ahorros: ContextoAhorro[];
+}
