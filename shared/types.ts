@@ -21,6 +21,16 @@ export interface Ahorro {
   created_at: string;
 }
 
+export interface TelegramLink {
+  id: string;
+  user_id: string;
+  chat_id: string | null;
+  link_code: string | null;
+  link_code_expires_at: string | null;
+  linked_at: string | null;
+  created_at: string;
+}
+
 export interface Recordatorio {
   id: string;
   user_id: string;

@@ -154,3 +154,34 @@ create policy "recordatorios_delete_own"
   on recordatorios for delete
   to authenticated
   using ((select auth.uid())::text = user_id);
+
+-- Vinculo entre una cuenta de Supabase Auth (login web) y un chat de Telegram.
+-- Reemplaza el viejo esquema de "bot privado" (un unico TELEGRAM_USER_ID /
+-- TELEGRAM_ALLOWED_CHAT_ID fijados por variable de entorno): ahora cualquier
+-- usuario que se registre en la app puede generar un codigo desde
+-- Configuracion, mandarle "/start <codigo>" al bot por Telegram, y el webhook
+-- (api/webhook.ts) vincula ese chat_id a su user_id. Todas las escrituras las
+-- hace el backend con la service role key (ver api/telegram/link.ts,
+-- api/telegram/unlink.ts y api/webhook.ts) — el frontend solo puede leer su
+-- propia fila.
+create table if not exists telegram_links (
+  id uuid default gen_random_uuid() primary key,
+  user_id text not null unique,
+  chat_id text unique,
+  link_code text unique,
+  link_code_expires_at timestamptz,
+  linked_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists telegram_links_chat_id_idx on telegram_links (chat_id);
+create index if not exists telegram_links_link_code_idx on telegram_links (link_code);
+
+alter table telegram_links enable row level security;
+
+drop policy if exists "telegram_links_select_own" on telegram_links;
+
+create policy "telegram_links_select_own"
+  on telegram_links for select
+  to authenticated
+  using ((select auth.uid())::text = user_id);

@@ -25,3 +25,23 @@ export interface TelegramUpdate {
     text?: string;
   };
 }
+
+let cachedBotUsername: string | null = null;
+
+// Username del bot (sin el @), para armar el deep link de vinculacion
+// (t.me/<username>?start=<codigo>). Se pide una sola vez a la API de
+// Telegram y se cachea en memoria mientras la funcion serverless siga
+// "caliente".
+export async function getBotUsername(): Promise<string> {
+  if (cachedBotUsername) return cachedBotUsername;
+
+  const res = await fetch(`${TELEGRAM_API}/bot${botToken()}/getMe`);
+  const body = (await res.json()) as { ok: boolean; result?: { username?: string } };
+
+  if (!res.ok || !body.ok || !body.result?.username) {
+    throw new Error("No se pudo obtener el username del bot de Telegram (getMe)");
+  }
+
+  cachedBotUsername = body.result.username;
+  return cachedBotUsername;
+}

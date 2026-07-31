@@ -3,10 +3,12 @@ import { supabase } from "../lib/supabaseClient.ts";
 import { useAuth } from "../contexts/AuthContext.tsx";
 import { PersonIcon } from "./icons.tsx";
 import { FlyingBillIcon } from "./FlyingBillIcon.tsx";
+import { SettingsModal } from "./SettingsModal.tsx";
 
 export function Navbar() {
   const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-40 px-4 py-4 drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)] sm:px-6">
@@ -30,7 +32,7 @@ export function Navbar() {
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-              <div className="glass-pop-enter absolute right-0 top-full z-50 mt-2 w-56 origin-top-right border border-white/15 bg-white/10 shadow-lg shadow-black/30 backdrop-blur-xl">
+              <div className="glass-pop-enter absolute right-0 top-full z-50 mt-2 w-56 origin-top-right border border-white/15 bg-black/95 shadow-lg shadow-black/50 backdrop-blur-xl">
                 <p className="truncate border-b border-white/10 px-4 py-3 font-mono text-xs text-white/60">
                   {user?.email}
                 </p>
@@ -38,9 +40,19 @@ export function Navbar() {
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
-                    supabase.auth.signOut();
+                    setSettingsOpen(true);
                   }}
                   className="w-full px-4 py-3 text-left font-mono text-xs uppercase tracking-widest text-white/70 transition-colors hover:bg-white hover:text-black"
+                >
+                  Configuracion
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    supabase.auth.signOut();
+                  }}
+                  className="w-full border-t border-white/10 px-4 py-3 text-left font-mono text-xs uppercase tracking-widest text-white/70 transition-colors hover:bg-white hover:text-black"
                 >
                   Cerrar sesion
                 </button>
@@ -49,6 +61,8 @@ export function Navbar() {
           )}
         </div>
       </div>
+
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </header>
   );
 }

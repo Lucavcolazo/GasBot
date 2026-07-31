@@ -110,32 +110,91 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const chatId = message.chat.id;
+  const chatIdStr = String(chatId);
   const texto = message.text.trim();
 
-  // Bot privado: solo procesamos mensajes del chat_id configurado. Cualquier
-  // otro chat recibe su propio chat_id para que, si sos vos, lo puedas
-  // cargar en TELEGRAM_ALLOWED_CHAT_ID.
-  const allowedChatId = process.env.TELEGRAM_ALLOWED_CHAT_ID;
-  if (allowedChatId && String(chatId) !== allowedChatId) {
-    await sendMessage(chatId, `Este bot es privado.\n\nTu chat id es: ${chatId}`).catch(() => {});
-    res.status(200).send("OK");
-    return;
-  }
-
   try {
-    if (texto.startsWith("/start")) {
-      await sendMessage(chatId, `${WELCOME}\n\nTu chat id es: ${chatId}`);
+    // "/start" o "/start <codigo>" — el deep link de vinculacion desde
+    // Configuracion en la app manda "/start <codigo>" como texto del mensaje.
+    const startMatch = texto.match(/^\/start(?:@\S+)?(?:\s+(\S+))?/);
+    if (startMatch) {
+      const codigo = startMatch[1];
+
+      if (!codigo) {
+        await sendMessage(
+          chatId,
+          `${WELCOME}\n\nPara conectar este Telegram con tu cuenta, entrá a la app, tocá tu perfil y en Configuración generá el link de conexión.`,
+        );
+        res.status(200).send("OK");
+        return;
+      }
+
+      const { data: pendiente } = await supabaseAdmin
+        .from("telegram_links")
+        .select("id, user_id, link_code_expires_at")
+        .eq("link_code", codigo)
+        .maybeSingle();
+
+      const vencido = pendiente?.link_code_expires_at && new Date(pendiente.link_code_expires_at) < new Date();
+      if (!pendiente || vencido) {
+        await sendMessage(
+          chatId,
+          "Ese código no es válido o venció. Volvé a Configuración en la app y generá uno nuevo.",
+        );
+        res.status(200).send("OK");
+        return;
+      }
+
+      const { data: chatEnUso } = await supabaseAdmin
+        .from("telegram_links")
+        .select("user_id")
+        .eq("chat_id", chatIdStr)
+        .maybeSingle();
+
+      if (chatEnUso && chatEnUso.user_id !== pendiente.user_id) {
+        await sendMessage(chatId, "Este Telegram ya está conectado a otra cuenta de GasBot.");
+        res.status(200).send("OK");
+        return;
+      }
+
+      const { error: linkError } = await supabaseAdmin
+        .from("telegram_links")
+        .update({
+          chat_id: chatIdStr,
+          linked_at: new Date().toISOString(),
+          link_code: null,
+          link_code_expires_at: null,
+        })
+        .eq("id", pendiente.id);
+
+      if (linkError) {
+        console.error("Error vinculando telegram", linkError);
+        await sendMessage(chatId, "Hubo un problema conectando tu cuenta, probá de nuevo.");
+        res.status(200).send("OK");
+        return;
+      }
+
+      await sendMessage(chatId, `${WELCOME}\n\n¡Listo! Tu cuenta quedó conectada.`);
       res.status(200).send("OK");
       return;
     }
 
-    const targetUserId = process.env.TELEGRAM_USER_ID;
-    if (!targetUserId) {
-      await sendMessage(chatId, "Falta configurar TELEGRAM_USER_ID en el servidor para poder guardar movimientos.");
+    const { data: vinculo } = await supabaseAdmin
+      .from("telegram_links")
+      .select("user_id")
+      .eq("chat_id", chatIdStr)
+      .maybeSingle();
+
+    if (!vinculo) {
+      await sendMessage(
+        chatId,
+        "Todavía no conectaste este Telegram con tu cuenta de GasBot. Entrá a la app, tocá tu perfil y en Configuración conectá tu Telegram.",
+      );
       res.status(200).send("OK");
       return;
     }
 
+    const targetUserId = vinculo.user_id;
     const contexto = await cargarContexto(targetUserId);
     const accion = await interpretarMensaje(texto, contexto);
 

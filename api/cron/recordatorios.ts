@@ -4,7 +4,8 @@ import { supabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { capitalize, formatMonto } from "../_lib/format.js";
 import { diaVencimientoEfectivo, estadoParaPeriodo, hoyArgentina, periodoKey } from "../../shared/recordatorios.js";
 
-// Corre una vez por día (ver vercel.json) y avisa por Telegram los
+// Corre una vez por día (ver vercel.json), recorre a todos los usuarios con
+// Telegram vinculado (tabla telegram_links) y avisa por chat los
 // recordatorios de gastos fijos que vencen en 3 días o que vencen hoy.
 // El estado de pagado/notificado de cada recordatorio se resetea solo cuando
 // cambia el periodo (mes) actual respecto al guardado en la fila.
@@ -18,25 +19,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const targetUserId = process.env.TELEGRAM_USER_ID;
-  const chatId = process.env.TELEGRAM_ALLOWED_CHAT_ID;
-  if (!targetUserId || !chatId) {
-    res.status(200).send("Falta configurar TELEGRAM_USER_ID o TELEGRAM_ALLOWED_CHAT_ID");
+  const { data: vinculos, error: vinculosError } = await supabaseAdmin
+    .from("telegram_links")
+    .select("user_id, chat_id")
+    .not("chat_id", "is", null);
+
+  if (vinculosError) {
+    console.error("Error leyendo telegram_links", vinculosError);
+    res.status(500).send("Error leyendo telegram_links");
     return;
   }
 
-  const { year, month, day } = hoyArgentina();
-  const periodoActual = periodoKey(year, month);
+  const fecha = hoyArgentina();
+  const periodoActual = periodoKey(fecha.year, fecha.month);
 
+  for (const vinculo of vinculos ?? []) {
+    if (!vinculo.chat_id) continue;
+    await notificarRecordatoriosDeUsuario(vinculo.user_id, vinculo.chat_id, fecha, periodoActual);
+  }
+
+  res.status(200).send("OK");
+}
+
+async function notificarRecordatoriosDeUsuario(
+  userId: string,
+  chatId: string,
+  fecha: { year: number; month: number; day: number },
+  periodoActual: string,
+): Promise<void> {
   const { data: recordatorios, error } = await supabaseAdmin
     .from("recordatorios")
     .select("*")
-    .eq("user_id", targetUserId)
+    .eq("user_id", userId)
     .eq("activo", true);
 
   if (error) {
-    console.error("Error leyendo recordatorios", error);
-    res.status(500).send("Error leyendo recordatorios");
+    console.error("Error leyendo recordatorios", userId, error);
     return;
   }
 
@@ -52,8 +70,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       continue;
     }
 
-    const diaVenc = diaVencimientoEfectivo(r.dia_vencimiento, year, month);
-    const diasRestantes = diaVenc - day;
+    const diaVenc = diaVencimientoEfectivo(r.dia_vencimiento, fecha.year, fecha.month);
+    const diasRestantes = diaVenc - fecha.day;
 
     let notificado3dias = estado.notificado_3dias;
     let notificadoVencimiento = estado.notificado_vencimiento;
@@ -90,6 +108,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .eq("id", r.id);
     }
   }
-
-  res.status(200).send("OK");
 }
