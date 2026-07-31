@@ -31,10 +31,12 @@ export type AccionBot =
   | { accion: "eliminar_movimiento"; id: string }
   | { accion: "crear_ahorro"; nombre: string; monto: number; meta?: number }
   | { accion: "agregar_ahorro"; id: string; monto: number }
+  | { accion: "restar_ahorro"; id: string; monto: number }
   | { accion: "eliminar_ahorro"; id: string }
   | { accion: "consultar_balance" }
   | { accion: "consultar_ahorros" }
   | { accion: "consultar_categorias" }
+  | { accion: "listar_movimientos"; tipo?: Tipo }
   | { accion: "no_entendido" };
 
 export interface ContextoMovimiento {

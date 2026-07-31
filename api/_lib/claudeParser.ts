@@ -25,38 +25,61 @@ Acciones posibles (respondé ÚNICAMENTE con el JSON de UNA de estas formas, sin
 5. Sumar plata a un ahorro que ya existe. Usá el "id" EXACTO de la lista de ahorros:
 {"accion": "agregar_ahorro", "id": "...", "monto": number}
 
-6. Borrar un ahorro existente. Usá el "id" EXACTO de la lista:
+6. Sacar/retirar/usar plata de un ahorro que ya existe (el usuario gastó o retiró parte de lo ahorrado). Usá el "id" EXACTO de la lista:
+{"accion": "restar_ahorro", "id": "...", "monto": number}
+
+7. Borrar un ahorro existente. Usá el "id" EXACTO de la lista:
 {"accion": "eliminar_ahorro", "id": "..."}
 
-7. Preguntar el balance / cuánta plata tiene disponible:
+8. Preguntar el balance / cuánta plata tiene disponible / cómo viene la plata en general:
 {"accion": "consultar_balance"}
 
-8. Preguntar por sus ahorros:
+9. Preguntar por sus ahorros:
 {"accion": "consultar_ahorros"}
 
-9. Preguntar qué categorías existen:
+10. Preguntar qué categorías existen:
 {"accion": "consultar_categorias"}
 
-10. Si el mensaje no encaja claramente en ninguna de las anteriores, o hace referencia a algo que no aparece en las listas de contexto:
+11. Pedir la lista de movimientos recientes (gastos y/o ingresos), por ejemplo "qué gasté", "en qué gasté esta semana", "mis últimos gastos", "qué ingresos tuve". "tipo" es opcional: omitilo si pide todo, usá "gasto" si pide solo gastos, "ingreso" si pide solo ingresos:
+{"accion": "listar_movimientos", "tipo": "gasto"|"ingreso" (opcional)}
+
+12. Si el mensaje no encaja claramente en ninguna de las anteriores, o hace referencia a algo que no aparece en las listas de contexto:
 {"accion": "no_entendido"}
 
 Reglas:
-- "monto" es siempre un número positivo (sin signo, sin puntos de miles).
+- "monto" es siempre un número positivo (sin signo, sin puntos de miles). Interpretá abreviaturas coloquiales: "5k" o "5 lucas" o "5 mil" son 5000; "2kk" o "2 palos" son 2000000.
 - "descripcion" es una frase corta (2-4 palabras), en minúscula, sin repetir el monto.
-- Para editar_movimiento/eliminar_movimiento/agregar_ahorro/eliminar_ahorro: si no hay una referencia clara y confiable en el contexto (por ejemplo "el último", una descripción que coincide, un nombre de ahorro que coincide), respondé "no_entendido" en vez de adivinar.
+- Para editar_movimiento/eliminar_movimiento/agregar_ahorro/restar_ahorro/eliminar_ahorro: si no hay una referencia clara y confiable en el contexto (por ejemplo "el último", una descripción que coincide, un nombre de ahorro que coincide), respondé "no_entendido" en vez de adivinar.
 - Nunca inventes un id que no esté literalmente en las listas de contexto.
+- Los usuarios escriben en español rioplatense informal, con errores de tipeo, sin tildes, y usan muchos sinónimos. Interpretá la intención, no la redacción exacta. Ejemplos de sinónimos:
+  - Crear gasto: "gasté", "pagué", "me clavé", "me comí", "me gasté", "salió", "tuve que pagar", "se me fue en".
+  - Crear ingreso: "cobré", "entraron", "me depositaron", "me pagaron", "gané", "cayó".
+  - Editar: "me equivoqué", "en realidad", "no era X sino Y", "corregí", "corrígelo", "cambialo", "arreglalo".
+  - Eliminar: "bórralo", "borralo", "eliminalo", "sacalo", "anulalo", "no cuenta eso".
+  - Crear ahorro: "quiero ahorrar", "quiero juntar plata para", "arranco un fondo para", "estoy guardando para".
+  - Agregar a ahorro: "guardé más", "sumá", "metí más plata", "aparté más".
+  - Restar de ahorro: "usé plata de", "saqué del ahorro", "gasté lo que tenía ahorrado para".
+- Respondé SIEMPRE con el objeto JSON solo: sin bloques de código markdown (nada de \`\`\`), sin explicaciones antes o después, sin pedir datos personales ni autenticación.
 
 Ejemplos:
 "gasté 5000 en nafta" -> {"accion": "crear_movimiento", "tipo": "gasto", "monto": 5000, "categoria": "transporte", "descripcion": "nafta"}
 "cobré 80000 de sueldo" -> {"accion": "crear_movimiento", "tipo": "ingreso", "monto": 80000, "categoria": "sueldo", "descripcion": "sueldo"}
+"me comí un alfajor de 10k" -> {"accion": "crear_movimiento", "tipo": "gasto", "monto": 10000, "categoria": "comida", "descripcion": "alfajor"}
+"me clavé 15 lucas en un asado" -> {"accion": "crear_movimiento", "tipo": "gasto", "monto": 15000, "categoria": "comida", "descripcion": "asado"}
 "me equivoqué, el alfajor salía 5k" (con "alfajor rasta" en la lista de movimientos, id abc-123) -> {"accion": "editar_movimiento", "id": "abc-123", "tipo": "gasto", "monto": 5000, "categoria": "comida", "descripcion": "alfajor rasta"}
 "borrá lo del alfajor" (con "alfajor rasta" en la lista, id abc-123) -> {"accion": "eliminar_movimiento", "id": "abc-123"}
+"me equivoqué con el alfajor, bórralo" (con "alfajor rasta" en la lista, id abc-123) -> {"accion": "eliminar_movimiento", "id": "abc-123"}
 "quiero ahorrar para un auto, ya tengo 50000, la meta son 800000" -> {"accion": "crear_ahorro", "nombre": "auto", "monto": 50000, "meta": 800000}
 "guardé 5000 más para el auto" (con ahorro "auto" en la lista, id xyz-789) -> {"accion": "agregar_ahorro", "id": "xyz-789", "monto": 5000}
+"usé 10000 del ahorro del auto para un arreglo" (con ahorro "auto" en la lista, id xyz-789) -> {"accion": "restar_ahorro", "id": "xyz-789", "monto": 10000}
 "borrá el ahorro del celu" (con ahorro "celu nuevo" en la lista, id xyz-999) -> {"accion": "eliminar_ahorro", "id": "xyz-999"}
 "cuánto tengo disponible" -> {"accion": "consultar_balance"}
+"cuanto disponible tengo?" -> {"accion": "consultar_balance"}
 "cómo van mis ahorros" -> {"accion": "consultar_ahorros"}
 "qué categorías hay" -> {"accion": "consultar_categorias"}
+"qué gastos tengo" -> {"accion": "listar_movimientos", "tipo": "gasto"}
+"en qué gasté esta semana" -> {"accion": "listar_movimientos", "tipo": "gasto"}
+"mostrame mis últimos movimientos" -> {"accion": "listar_movimientos"}
 "hola como andas" -> {"accion": "no_entendido"}
 "borrá lo del cine" (sin nada de "cine" en la lista de movimientos) -> {"accion": "no_entendido"}`;
 
@@ -150,6 +173,11 @@ function validarAccion(raw: unknown, contexto: ContextoBot): AccionBot {
       if (typeof r.monto !== "number" || !Number.isFinite(r.monto) || r.monto <= 0) return { accion: "no_entendido" };
       return { accion: "agregar_ahorro", id: r.id as string, monto: r.monto };
     }
+    case "restar_ahorro": {
+      if (!idEnAhorros) return { accion: "no_entendido" };
+      if (typeof r.monto !== "number" || !Number.isFinite(r.monto) || r.monto <= 0) return { accion: "no_entendido" };
+      return { accion: "restar_ahorro", id: r.id as string, monto: r.monto };
+    }
     case "eliminar_ahorro": {
       if (!idEnAhorros) return { accion: "no_entendido" };
       return { accion: "eliminar_ahorro", id: r.id as string };
@@ -160,9 +188,43 @@ function validarAccion(raw: unknown, contexto: ContextoBot): AccionBot {
       return { accion: "consultar_ahorros" };
     case "consultar_categorias":
       return { accion: "consultar_categorias" };
+    case "listar_movimientos": {
+      if (r.tipo !== undefined && !isTipo(r.tipo)) return { accion: "no_entendido" };
+      return { accion: "listar_movimientos", tipo: isTipo(r.tipo) ? r.tipo : undefined };
+    }
     default:
       return { accion: "no_entendido" };
   }
+}
+
+// El modelo a veces ignora "sin markdown" y devuelve el JSON envuelto en un
+// bloque ```json, o con texto charlatán alrededor. Antes esto rompía
+// JSON.parse y todo caía silenciosamente en "no_entendido" aunque el modelo
+// hubiera interpretado bien el mensaje. Limpiamos fences y, si hace falta,
+// extraemos el primer objeto {...} del texto.
+function extraerJSON(texto: string): unknown {
+  const limpio = texto
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/, "")
+    .trim();
+
+  try {
+    return JSON.parse(limpio);
+  } catch {
+    // sigue abajo
+  }
+
+  const match = limpio.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      // no hay JSON válido
+    }
+  }
+
+  return null;
 }
 
 export async function interpretarMensaje(texto: string, contexto: ContextoBot): Promise<AccionBot> {
@@ -177,12 +239,8 @@ export async function interpretarMensaje(texto: string, contexto: ContextoBot): 
   const textBlock = response.content.find((block) => block.type === "text");
   if (!textBlock || textBlock.type !== "text") return { accion: "no_entendido" };
 
-  let raw: unknown;
-  try {
-    raw = JSON.parse(textBlock.text.trim());
-  } catch {
-    return { accion: "no_entendido" };
-  }
+  const raw = extraerJSON(textBlock.text);
+  if (raw === null) return { accion: "no_entendido" };
 
   return validarAccion(raw, contexto);
 }

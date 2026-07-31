@@ -247,6 +247,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       }
 
+      case "restar_ahorro": {
+        const ahorro = contexto.ahorros.find((a) => a.id === accion.id);
+        if (!ahorro) {
+          await sendMessage(chatId, "No encontré ese ahorro, probá de nuevo.");
+          break;
+        }
+        if (accion.monto > ahorro.monto_actual) {
+          await sendMessage(
+            chatId,
+            `En ${capitalize(ahorro.nombre)} solo tenés $${formatMonto(ahorro.monto_actual)}, no te puedo sacar $${formatMonto(accion.monto)}.`,
+          );
+          break;
+        }
+        const nuevoMonto = ahorro.monto_actual - accion.monto;
+        const { error } = await supabaseAdmin
+          .from("ahorros")
+          .update({ monto_actual: nuevoMonto })
+          .eq("id", accion.id)
+          .eq("user_id", targetUserId);
+        if (error) {
+          console.error("Update ahorro error", error);
+          await sendMessage(chatId, "Hubo un problema actualizando el ahorro, probá de nuevo.");
+          break;
+        }
+        await sendMessage(
+          chatId,
+          `Sacaste $${formatMonto(accion.monto)} de ${capitalize(ahorro.nombre)}. Ahora te quedan $${formatMonto(nuevoMonto)} ahorrados.`,
+        );
+        break;
+      }
+
       case "eliminar_ahorro": {
         const ahorro = contexto.ahorros.find((a) => a.id === accion.id);
         const { error } = await supabaseAdmin.from("ahorros").delete().eq("id", accion.id).eq("user_id", targetUserId);
@@ -286,6 +317,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       case "consultar_categorias": {
         await sendMessage(chatId, CATEGORIAS.map(capitalize).join(", "));
+        break;
+      }
+
+      case "listar_movimientos": {
+        const filtrados = accion.tipo
+          ? contexto.movimientos.filter((m) => m.tipo === accion.tipo)
+          : contexto.movimientos;
+        if (filtrados.length === 0) {
+          await sendMessage(chatId, "No encontré movimientos recientes para mostrarte.");
+          break;
+        }
+        const detalle = filtrados
+          .slice(0, 10)
+          .map(
+            (m) =>
+              `- $${formatMonto(m.monto)} - ${capitalize(m.descripcion ?? m.categoria)} (${capitalize(m.categoria)}) - ${m.hace}`,
+          )
+          .join("\n");
+        await sendMessage(chatId, detalle);
         break;
       }
     }
