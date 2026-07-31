@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { sendMessage, type TelegramUpdate } from "./_lib/telegram.ts";
-import { parseMensaje } from "./_lib/claudeParser.ts";
-import { supabaseAdmin } from "./_lib/supabaseAdmin.ts";
+import { sendMessage, type TelegramUpdate } from "./_lib/telegram.js";
+import { parseMensaje } from "./_lib/claudeParser.js";
+import { supabaseAdmin } from "./_lib/supabaseAdmin.js";
 
 const WELCOME = `Hola. Soy GasBot.
 

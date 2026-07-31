@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { CATEGORIAS, isCategoria, isTipo } from "../../shared/categories.ts";
-import type { ParsedMovimiento } from "../../shared/types.ts";
+import { CATEGORIAS, isCategoria, isTipo } from "../../shared/categories.js";
+import type { ParsedMovimiento } from "../../shared/types.js";
 
 const MODEL = "claude-haiku-4-5-20251001";
 
