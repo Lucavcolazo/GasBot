@@ -1,0 +1,101 @@
+-- Ejecutar en el SQL Editor de Supabase (Project > SQL Editor > New query).
+-- Es seguro re-ejecutar completo: crea la tabla si no existe y reemplaza
+-- las policies de RLS por la version que soporta login web (auth.uid()).
+
+create table if not exists movimientos (
+  id uuid default gen_random_uuid() primary key,
+  user_id text not null,          -- auth.uid() (login web) o telegram chat_id (bot)
+  tipo text not null check (tipo in ('gasto', 'ingreso')),
+  monto numeric not null check (monto > 0),
+  moneda text not null default 'ARS' check (moneda in ('ARS', 'USD')),
+  categoria text not null check (categoria in (
+    'comida', 'transporte', 'servicios', 'entretenimiento',
+    'salud', 'indumentaria', 'hogar', 'sueldo', 'otros'
+  )),
+  descripcion text,
+  mensaje_original text,
+  created_at timestamptz not null default now()
+);
+
+-- Migracion para instalaciones que ya tenian la tabla sin la columna moneda.
+alter table movimientos add column if not exists moneda text not null default 'ARS';
+alter table movimientos drop constraint if exists movimientos_moneda_check;
+alter table movimientos add constraint movimientos_moneda_check check (moneda in ('ARS', 'USD'));
+
+create index if not exists movimientos_user_id_created_at_idx
+  on movimientos (user_id, created_at desc);
+
+alter table movimientos enable row level security;
+
+-- Policies de versiones anteriores (sin auth), se reemplazan por completo.
+drop policy if exists "Lectura pública de movimientos" on movimientos;
+drop policy if exists "movimientos_select_own" on movimientos;
+drop policy if exists "movimientos_insert_own" on movimientos;
+drop policy if exists "movimientos_update_own" on movimientos;
+drop policy if exists "movimientos_delete_own" on movimientos;
+
+-- Cada usuario autenticado (login web) solo ve y modifica sus propias filas.
+-- El bot de Telegram inserta con la service role key, que bypassea RLS por
+-- diseño, así que estas policies no le aplican a él.
+create policy "movimientos_select_own"
+  on movimientos for select
+  to authenticated
+  using ((select auth.uid())::text = user_id);
+
+create policy "movimientos_insert_own"
+  on movimientos for insert
+  to authenticated
+  with check ((select auth.uid())::text = user_id);
+
+create policy "movimientos_update_own"
+  on movimientos for update
+  to authenticated
+  using ((select auth.uid())::text = user_id)
+  with check ((select auth.uid())::text = user_id);
+
+create policy "movimientos_delete_own"
+  on movimientos for delete
+  to authenticated
+  using ((select auth.uid())::text = user_id);
+
+-- Ahorros: metas de ahorro con nombre propio (ej. "Auto", "Celu nuevo"),
+-- cada una con un monto actual y, opcionalmente, una meta a alcanzar.
+create table if not exists ahorros (
+  id uuid default gen_random_uuid() primary key,
+  user_id text not null,
+  nombre text not null,
+  monto_actual numeric not null default 0 check (monto_actual >= 0),
+  meta numeric check (meta is null or meta > 0),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists ahorros_user_id_created_at_idx
+  on ahorros (user_id, created_at desc);
+
+alter table ahorros enable row level security;
+
+drop policy if exists "ahorros_select_own" on ahorros;
+drop policy if exists "ahorros_insert_own" on ahorros;
+drop policy if exists "ahorros_update_own" on ahorros;
+drop policy if exists "ahorros_delete_own" on ahorros;
+
+create policy "ahorros_select_own"
+  on ahorros for select
+  to authenticated
+  using ((select auth.uid())::text = user_id);
+
+create policy "ahorros_insert_own"
+  on ahorros for insert
+  to authenticated
+  with check ((select auth.uid())::text = user_id);
+
+create policy "ahorros_update_own"
+  on ahorros for update
+  to authenticated
+  using ((select auth.uid())::text = user_id)
+  with check ((select auth.uid())::text = user_id);
+
+create policy "ahorros_delete_own"
+  on ahorros for delete
+  to authenticated
+  using ((select auth.uid())::text = user_id);

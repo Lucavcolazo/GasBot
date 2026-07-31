@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    @apply bg-black text-white;
+  }
+
+  * {
+    @apply border-white/15;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply border border-white/15 bg-black p-5;
+  }
+
+  .label-mono {
+    @apply font-mono text-[11px] uppercase tracking-widest text-white/50;
+  }
+
+  .value-mono {
+    @apply font-mono tabular-nums;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 border border-white px-4 py-2 font-mono text-xs uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-primary {
+    @apply btn bg-white text-black hover:bg-white/80;
+  }
+
+  .btn-outline {
+    @apply btn bg-transparent text-white hover:bg-white hover:text-black;
+  }
+
+  .btn-ghost {
+    @apply btn border-white/30 text-white/70 hover:border-white hover:text-white;
+  }
+
+  .field-label {
+    @apply label-mono mb-1.5 block;
+  }
+
+  .field-input {
+    @apply w-full border border-white/30 bg-black px-3 py-2 font-mono text-sm text-white placeholder:text-white/30 focus:border-white focus:outline-none;
+  }
+
+  .field-select {
+    @apply field-input appearance-none;
+  }
+}
+
+@keyframes flying-bill-flap-left {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(22deg);
+  }
+}
+
+@keyframes flying-bill-flap-right {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-22deg);
+  }
+}
+
+@keyframes flying-bill-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+.flying-bill-wing-left {
+  transform-box: fill-box;
+  transform-origin: 100% 50%;
+  animation: flying-bill-flap-left 0.9s ease-in-out infinite;
+}
+
+.flying-bill-wing-right {
+  transform-box: fill-box;
+  transform-origin: 0% 50%;
+  animation: flying-bill-flap-right 0.9s ease-in-out infinite;
+}
+
+.flying-bill-body {
+  transform-box: fill-box;
+  animation: flying-bill-float 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flying-bill-wing-left,
+  .flying-bill-wing-right,
+  .flying-bill-body {
+    animation: none;
+  }
+}
