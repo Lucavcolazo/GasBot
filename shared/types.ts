@@ -50,22 +50,30 @@ export interface Recordatorio {
 // Para editar/eliminar/agregar_ahorro, el "id" tiene que ser uno de los que
 // se le pasaron en el contexto (movimientos/ahorros recientes) — nunca se
 // confia en un id inventado por el modelo.
+export interface CamposMovimiento {
+  tipo: Tipo;
+  monto: number;
+  categoria: Categoria;
+  descripcion: string;
+}
+
 export type AccionBot =
-  | { accion: "crear_movimiento"; tipo: Tipo; monto: number; categoria: Categoria; descripcion: string }
+  | { accion: "crear_movimientos"; movimientos: CamposMovimiento[]; pregunta?: string }
   | { accion: "editar_movimiento"; id: string; tipo: Tipo; monto: number; categoria: Categoria; descripcion: string }
   | { accion: "eliminar_movimiento"; id: string }
   | { accion: "crear_ahorro"; nombre: string; monto: number; meta?: number }
   | { accion: "agregar_ahorro"; id: string; monto: number }
   | { accion: "restar_ahorro"; id: string; monto: number }
   | { accion: "eliminar_ahorro"; id: string }
-  | { accion: "consultar_balance" }
+  | { accion: "consultar_balance"; desde?: string; hasta?: string }
   | { accion: "consultar_ahorros" }
   | { accion: "consultar_categorias" }
-  | { accion: "listar_movimientos"; tipo?: Tipo }
+  | { accion: "listar_movimientos"; tipo?: Tipo; desde?: string; hasta?: string }
   | { accion: "crear_recordatorio"; nombre: string; monto: number; categoria: Categoria; dia_vencimiento: number }
   | { accion: "eliminar_recordatorio"; id: string }
   | { accion: "marcar_pagado_recordatorio"; id: string }
   | { accion: "listar_recordatorios" }
+  | { accion: "pregunta"; texto: string }
   | { accion: "no_entendido" };
 
 export interface ContextoMovimiento {

@@ -2,10 +2,10 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { sendMessage, type TelegramUpdate } from "./_lib/telegram.js";
 import { interpretarMensaje } from "./_lib/claudeParser.js";
 import { supabaseAdmin } from "./_lib/supabaseAdmin.js";
-import { CATEGORIAS } from "../shared/categories.js";
+import { CATEGORIAS, type Tipo } from "../shared/categories.js";
 import type { ContextoAhorro, ContextoBot, ContextoMovimiento, ContextoRecordatorio } from "../shared/types.js";
-import { estadoParaPeriodo, hoyArgentina, periodoKey } from "../shared/recordatorios.js";
-import { capitalize, formatMonto } from "./_lib/format.js";
+import { estadoParaPeriodo, finDiaArgentina, hoyArgentina, inicioDiaArgentina, periodoKey } from "../shared/recordatorios.js";
+import { capitalize, formatMonto, formatPeriodoLabel } from "./_lib/format.js";
 import { checkRateLimit } from "./_lib/rateLimit.js";
 
 const WELCOME = `Hola. Soy GasBot.
@@ -75,8 +75,15 @@ async function cargarContexto(userId: string): Promise<ContextoBot> {
   return { movimientos, ahorros, recordatorios };
 }
 
-async function calcularBalance(userId: string): Promise<{ ingresos: number; gastos: number }> {
-  const { data } = await supabaseAdmin.from("movimientos").select("tipo, monto").eq("user_id", userId);
+async function calcularBalance(
+  userId: string,
+  desde?: string,
+  hasta?: string,
+): Promise<{ ingresos: number; gastos: number }> {
+  let query = supabaseAdmin.from("movimientos").select("tipo, monto").eq("user_id", userId);
+  if (desde) query = query.gte("created_at", inicioDiaArgentina(desde));
+  if (hasta) query = query.lte("created_at", finDiaArgentina(hasta));
+  const { data } = await query;
   let ingresos = 0;
   let gastos = 0;
   for (const m of data ?? []) {
@@ -84,6 +91,31 @@ async function calcularBalance(userId: string): Promise<{ ingresos: number; gast
     else gastos += m.monto;
   }
   return { ingresos, gastos };
+}
+
+async function listarMovimientosPeriodo(
+  userId: string,
+  tipo: Tipo | undefined,
+  desde: string | undefined,
+  hasta: string | undefined,
+): Promise<ContextoMovimiento[]> {
+  let query = supabaseAdmin
+    .from("movimientos")
+    .select("id, tipo, monto, categoria, descripcion, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (tipo) query = query.eq("tipo", tipo);
+  if (desde) query = query.gte("created_at", inicioDiaArgentina(desde));
+  if (hasta) query = query.lte("created_at", finDiaArgentina(hasta));
+  const { data } = await query.limit(50);
+  return (data ?? []).map((m) => ({
+    id: m.id,
+    tipo: m.tipo,
+    monto: m.monto,
+    categoria: m.categoria,
+    descripcion: m.descripcion,
+    hace: haceTiempo(m.created_at),
+  }));
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -221,24 +253,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       }
 
-      case "crear_movimiento": {
-        const { error } = await supabaseAdmin.from("movimientos").insert({
-          user_id: targetUserId,
-          tipo: accion.tipo,
-          monto: accion.monto,
-          categoria: accion.categoria,
-          descripcion: accion.descripcion,
-          mensaje_original: texto,
-        });
-        if (error) {
-          console.error("Insert movimiento error", error);
-          await sendMessage(chatId, "Hubo un problema guardando el movimiento, probá de nuevo.");
-          break;
+      case "crear_movimientos": {
+        if (accion.movimientos.length > 0) {
+          const { error } = await supabaseAdmin.from("movimientos").insert(
+            accion.movimientos.map((m) => ({
+              user_id: targetUserId,
+              tipo: m.tipo,
+              monto: m.monto,
+              categoria: m.categoria,
+              descripcion: m.descripcion,
+              mensaje_original: texto,
+            })),
+          );
+          if (error) {
+            console.error("Insert movimientos error", error);
+            await sendMessage(chatId, "Hubo un problema guardando el movimiento, probá de nuevo.");
+            break;
+          }
         }
-        await sendMessage(
-          chatId,
-          `Anotado: $${formatMonto(accion.monto)} - ${capitalize(accion.descripcion)} (${capitalize(accion.categoria)})`,
-        );
+
+        const detalle = accion.movimientos
+          .map((m) => `Anotado: $${formatMonto(m.monto)} - ${capitalize(m.descripcion)} (${capitalize(m.categoria)})`)
+          .join("\n");
+        const respuesta = [detalle, accion.pregunta].filter(Boolean).join("\n\n");
+        await sendMessage(chatId, respuesta);
+        break;
+      }
+
+      case "pregunta": {
+        await sendMessage(chatId, accion.texto);
         break;
       }
 
@@ -375,11 +418,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       case "consultar_balance": {
-        const { ingresos, gastos } = await calcularBalance(targetUserId);
+        const { ingresos, gastos } = await calcularBalance(targetUserId, accion.desde, accion.hasta);
         const balance = ingresos - gastos;
+        const periodo = formatPeriodoLabel(accion.desde, accion.hasta);
         await sendMessage(
           chatId,
-          `Ingresos: $${formatMonto(ingresos)}\nGastos: $${formatMonto(gastos)}\nBalance: ${
+          `${periodo}Ingresos: $${formatMonto(ingresos)}\nGastos: $${formatMonto(gastos)}\nBalance: ${
             balance >= 0 ? "+" : "-"
           }$${formatMonto(Math.abs(balance))}`,
         );
@@ -405,21 +449,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       case "listar_movimientos": {
-        const filtrados = accion.tipo
-          ? contexto.movimientos.filter((m) => m.tipo === accion.tipo)
-          : contexto.movimientos;
+        const conFiltroPeriodo = Boolean(accion.desde || accion.hasta);
+        const filtrados = conFiltroPeriodo
+          ? await listarMovimientosPeriodo(targetUserId, accion.tipo, accion.desde, accion.hasta)
+          : accion.tipo
+            ? contexto.movimientos.filter((m) => m.tipo === accion.tipo)
+            : contexto.movimientos;
         if (filtrados.length === 0) {
-          await sendMessage(chatId, "No encontré movimientos recientes para mostrarte.");
+          await sendMessage(
+            chatId,
+            conFiltroPeriodo
+              ? "No encontré movimientos para mostrarte en ese período."
+              : "No encontré movimientos recientes para mostrarte.",
+          );
           break;
         }
-        const detalle = filtrados
-          .slice(0, 10)
+        const periodo = formatPeriodoLabel(accion.desde, accion.hasta);
+        const mostrados = filtrados.slice(0, 20);
+        const detalle = mostrados
           .map(
             (m) =>
               `- $${formatMonto(m.monto)} - ${capitalize(m.descripcion ?? m.categoria)} (${capitalize(m.categoria)}) - ${m.hace}`,
           )
           .join("\n");
-        await sendMessage(chatId, detalle);
+        const nota = filtrados.length > mostrados.length ? `\n\n(mostrando los ${mostrados.length} más recientes)` : "";
+        await sendMessage(chatId, `${periodo}${detalle}${nota}`);
         break;
       }
 

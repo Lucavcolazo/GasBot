@@ -26,6 +26,26 @@ export function periodoKey(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
+export function hoyArgentinaISO(): string {
+  const { year, month, day } = hoyArgentina();
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+export function diaSemanaArgentina(): string {
+  return new Intl.DateTimeFormat("es-AR", { timeZone: TIMEZONE, weekday: "long" }).format(new Date());
+}
+
+// Limites de un dia en huso horario de Argentina (UTC-3, sin horario de
+// verano), como ISO con offset explicito — Postgres/PostgREST los interpreta
+// correctamente sin que tengamos que convertir a mano a UTC.
+export function inicioDiaArgentina(fechaISO: string): string {
+  return `${fechaISO}T00:00:00.000-03:00`;
+}
+
+export function finDiaArgentina(fechaISO: string): string {
+  return `${fechaISO}T23:59:59.999-03:00`;
+}
+
 export function ultimoDiaDelMes(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
