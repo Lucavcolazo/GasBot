@@ -2,7 +2,6 @@ import { useState } from "react";
 import { supabase } from "../lib/supabaseClient.ts";
 import { useAuth } from "../contexts/AuthContext.tsx";
 import { PersonIcon } from "./icons.tsx";
-import { FlyingBillIcon } from "./FlyingBillIcon.tsx";
 import { SettingsModal } from "./SettingsModal.tsx";
 
 export function Navbar() {
@@ -14,7 +13,7 @@ export function Navbar() {
     <header className="fixed top-0 z-40 w-full bg-gradient-to-b from-[#0a0a0a] via-[#0a0a0a]/85 to-transparent px-4 pb-6 pt-4 sm:px-6">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 lg:max-w-7xl">
         <div className="flex items-center gap-2">
-          <FlyingBillIcon className="h-6 w-9 text-white" />
+          <img src="/gasbot-cara.png" alt="" width={32} height={32} className="h-8 w-8 rounded-full ring-1 ring-white/15" />
           <h1 className="font-mono text-lg font-bold uppercase tracking-[-0.02em]">GasBot</h1>
         </div>
 
