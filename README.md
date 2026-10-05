@@ -9,6 +9,8 @@ Le escribís "gasté 5 lucas en nafta" y él solo entiende el monto, la categor�
 ## Qué hace
 
 - Anota gastos e ingresos escribiendo como hablás: "me clavé 15 lucas en un asado", "cobré el sueldo, 80 lucas"
+- Entiende cuándo fue: "ayer cargué nafta, 20 lucas", "el 1 pagué la luz"
+- Carga un resumen entero: le mandás la captura o el PDF (Mercado Pago, banco, tarjeta), te muestra lo que encontró con fecha y lo carga cuando tocás "Cargar". Saltea lo que ya tenías anotado
 - Corrige y borra movimientos por chat: "me equivoqué, el alfajor salía 5k", "borrá lo del cine"
 - Maneja metas de ahorro: "quiero ahorrar para un auto, ya tengo 50000"
 - Responde el balance cuando le preguntás: "cuánto tengo disponible"

@@ -5,7 +5,7 @@ import { useAhorros } from "../hooks/useAhorros.ts";
 import { useRecordatorios } from "../hooks/useRecordatorios.ts";
 import { PERIODOS, type Periodo, periodKey } from "../lib/aggregate.ts";
 import { supabase } from "../lib/supabaseClient.ts";
-import { hoyArgentina, periodoKey } from "../../shared/recordatorios.ts";
+import { desmarcarPagado, marcarPagado } from "../../shared/pagosRecordatorios.ts";
 import { Navbar } from "../components/Navbar.tsx";
 import { SummaryCards } from "../components/SummaryCards.tsx";
 import { AhorrosSection } from "../components/AhorrosSection.tsx";
@@ -104,26 +104,14 @@ export function Dashboard() {
 
   async function marcarPagadoRecordatorio(r: Recordatorio) {
     if (!user) return;
-    const { year, month } = hoyArgentina();
-    const periodoActual = periodoKey(year, month);
-    await Promise.all([
-      supabase
-        .from("recordatorios")
-        .update({
-          periodo_actual: periodoActual,
-          pagado: true,
-          notificado_3dias: false,
-          notificado_vencimiento: false,
-        })
-        .eq("id", r.id),
-      supabase.from("movimientos").insert({
-        user_id: user.id,
-        tipo: "gasto",
-        monto: r.monto,
-        categoria: r.categoria,
-        descripcion: r.nombre,
-      }),
-    ]);
+    await marcarPagado(supabase, user.id, r);
+    refreshRecordatorios();
+    refresh();
+  }
+
+  async function desmarcarPagadoRecordatorio(r: Recordatorio) {
+    if (!user) return;
+    await desmarcarPagado(supabase, user.id, r);
     refreshRecordatorios();
     refresh();
   }
@@ -171,6 +159,7 @@ export function Dashboard() {
                   onEdit={openEditRecordatorio}
                   onDelete={setDeleteRecordatorioTarget}
                   onMarcarPagado={marcarPagadoRecordatorio}
+                  onDesmarcarPagado={desmarcarPagadoRecordatorio}
                 />
               </div>
 

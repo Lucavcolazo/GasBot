@@ -9,6 +9,7 @@ export interface Movimiento {
   categoria: Categoria;
   descripcion: string | null;
   mensaje_original: string | null;
+  recordatorio_id: string | null;
   created_at: string;
 }
 
@@ -55,6 +56,15 @@ export interface CamposMovimiento {
   monto: number;
   categoria: Categoria;
   descripcion: string;
+  // "YYYY-MM-DD" (hora Argentina) cuando el movimiento no es de hoy: "ayer
+  // cargué nafta", o una línea de un resumen importado. Sin fecha = ahora.
+  fecha?: string;
+}
+
+// Lo que el bot sacó de un resumen (foto o PDF) que le mandaron por Telegram.
+export interface ResumenInterpretado {
+  movimientos: CamposMovimiento[];
+  nota?: string;
 }
 
 export type AccionBot =
@@ -72,6 +82,7 @@ export type AccionBot =
   | { accion: "crear_recordatorio"; nombre: string; monto: number; categoria: Categoria; dia_vencimiento: number }
   | { accion: "eliminar_recordatorio"; id: string }
   | { accion: "marcar_pagado_recordatorio"; id: string }
+  | { accion: "desmarcar_pagado_recordatorio"; id: string }
   | { accion: "listar_recordatorios" }
   | { accion: "pregunta"; texto: string }
   | { accion: "no_entendido" };

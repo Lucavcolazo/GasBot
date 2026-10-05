@@ -27,8 +27,19 @@ export function periodoKey(year: number, month: number): string {
 }
 
 export function hoyArgentinaISO(): string {
-  const { year, month, day } = hoyArgentina();
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return fechaArgentinaISO(new Date());
+}
+
+// "YYYY-MM-DD" del día en Argentina en que cae un instante (ej. un created_at).
+export function fechaArgentinaISO(fecha: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TIMEZONE }).format(fecha);
+}
+
+// Suma (o resta, con dias negativo) días a una fecha "YYYY-MM-DD".
+export function sumarDiasISO(fechaISO: string, dias: number): string {
+  const d = new Date(`${fechaISO}T12:00:00.000-03:00`);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return fechaArgentinaISO(d);
 }
 
 export function diaSemanaArgentina(): string {
@@ -44,6 +55,12 @@ export function inicioDiaArgentina(fechaISO: string): string {
 
 export function finDiaArgentina(fechaISO: string): string {
   return `${fechaISO}T23:59:59.999-03:00`;
+}
+
+// created_at para un movimiento cargado con fecha pasada: el mediodía de ese
+// día, así no se corre de día por el huso horario.
+export function mediodiaArgentina(fechaISO: string): string {
+  return `${fechaISO}T12:00:00.000-03:00`;
 }
 
 export function ultimoDiaDelMes(year: number, month: number): number {

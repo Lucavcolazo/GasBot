@@ -155,6 +155,15 @@ create policy "recordatorios_delete_own"
   to authenticated
   using ((select auth.uid())::text = user_id);
 
+-- Gasto que se anotó al marcar un recordatorio como pagado. Permite
+-- desmarcarlo y borrar ese mismo gasto aunque después se haya editado el monto
+-- (ver shared/pagosRecordatorios.ts). Si se borra el recordatorio, el gasto queda.
+alter table movimientos
+  add column if not exists recordatorio_id uuid references recordatorios (id) on delete set null;
+
+create index if not exists movimientos_recordatorio_id_idx
+  on movimientos (recordatorio_id) where recordatorio_id is not null;
+
 -- Vinculo entre una cuenta de Supabase Auth (login web) y un chat de Telegram.
 -- Reemplaza el viejo esquema de "bot privado" (un unico TELEGRAM_USER_ID /
 -- TELEGRAM_ALLOWED_CHAT_ID fijados por variable de entorno): ahora cualquier
@@ -185,6 +194,24 @@ create policy "telegram_links_select_own"
   on telegram_links for select
   to authenticated
   using ((select auth.uid())::text = user_id);
+
+-- Importaciones: cuando el usuario manda por Telegram un resumen (foto o PDF),
+-- el bot lo interpreta y guarda acá los movimientos que encontró hasta que el
+-- usuario los confirma con el botón del mensaje (api/webhook.ts). Al confirmar
+-- se insertan en movimientos. Solo el backend (service role) lee/escribe acá:
+-- RLS habilitado sin policies = deny-all para el frontend.
+create table if not exists importaciones (
+  id uuid default gen_random_uuid() primary key,
+  user_id text not null,
+  movimientos jsonb not null,
+  estado text not null default 'pendiente' check (estado in ('pendiente', 'confirmada', 'cancelada')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists importaciones_user_id_created_at_idx
+  on importaciones (user_id, created_at desc);
+
+alter table importaciones enable row level security;
 
 -- Rate limiting: guarda timestamps de mensajes por chat_id de Telegram
 -- para evitar que un usuario sature al bot. Solo el backend (service role)

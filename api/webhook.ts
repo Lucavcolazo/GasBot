@@ -1,10 +1,32 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { sendMessage, type TelegramUpdate } from "./_lib/telegram.js";
-import { interpretarMensaje } from "./_lib/claudeParser.js";
+import {
+  answerCallbackQuery,
+  descargarArchivo,
+  editMessageText,
+  sendMessage,
+  type TelegramUpdate,
+} from "./_lib/telegram.js";
+import { interpretarMensaje, interpretarResumen, type Adjunto } from "./_lib/claudeParser.js";
 import { supabaseAdmin } from "./_lib/supabaseAdmin.js";
 import { CATEGORIAS, type Tipo } from "../shared/categories.js";
-import type { ContextoAhorro, ContextoBot, ContextoMovimiento, ContextoRecordatorio } from "../shared/types.js";
-import { estadoParaPeriodo, finDiaArgentina, hoyArgentina, inicioDiaArgentina, periodoKey } from "../shared/recordatorios.js";
+import type {
+  CamposMovimiento,
+  ContextoAhorro,
+  ContextoBot,
+  ContextoMovimiento,
+  ContextoRecordatorio,
+} from "../shared/types.js";
+import {
+  estadoParaPeriodo,
+  fechaArgentinaISO,
+  finDiaArgentina,
+  hoyArgentina,
+  hoyArgentinaISO,
+  inicioDiaArgentina,
+  mediodiaArgentina,
+  periodoKey,
+} from "../shared/recordatorios.js";
+import { desmarcarPagado, marcarPagado } from "../shared/pagosRecordatorios.js";
 import { capitalize, formatMonto, formatPeriodoLabel } from "./_lib/format.js";
 import { checkRateLimit } from "./_lib/rateLimit.js";
 
@@ -18,7 +40,10 @@ Contame tus gastos e ingresos como si se lo dijeras a un amigo, por ejemplo:
 También puedo corregir o borrar algo que ya anotaste, manejar tus ahorros
 ("guardé 5000 más para el auto", "quiero ahorrar para un celu, ya tengo 20000"),
 tus gastos fijos ("recordame el alquiler el día 10, son 150000", "ya pagué el alquiler")
-y contarte tu balance o cómo van tus ahorros.`;
+y contarte tu balance o cómo van tus ahorros.
+
+Si te atrasaste, mandame una captura o el PDF del resumen (Mercado Pago, banco,
+tarjeta) y te cargo todos los movimientos con su fecha.`;
 
 function haceTiempo(iso: string): string {
   const minutos = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -27,6 +52,255 @@ function haceTiempo(iso: string): string {
   const horas = Math.round(minutos / 60);
   if (horas < 24) return `hace ${horas} h`;
   return `hace ${Math.round(horas / 24)} d`;
+}
+
+// Fila para insertar en movimientos. created_at va siempre explícito: en un
+// insert de varias filas, supabase-js manda null en las columnas que faltan
+// en alguna fila en vez de usar el default.
+function filaMovimiento(userId: string, m: CamposMovimiento, mensajeOriginal: string) {
+  return {
+    user_id: userId,
+    tipo: m.tipo,
+    monto: m.monto,
+    categoria: m.categoria,
+    descripcion: m.descripcion,
+    mensaje_original: mensajeOriginal,
+    created_at: m.fecha ? mediodiaArgentina(m.fecha) : new Date().toISOString(),
+  };
+}
+
+// "2026-10-03" -> "03/10"
+function diaMes(fechaISO: string): string {
+  const [, m, d] = fechaISO.split("-");
+  return `${d}/${m}`;
+}
+
+async function usuarioDelChat(chatId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin.from("telegram_links").select("user_id").eq("chat_id", chatId).maybeSingle();
+  return data?.user_id ?? null;
+}
+
+/* ---------- importar resúmenes (foto o PDF) ---------- */
+
+const IMAGEN_TIPOS = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
+type ImagenTipo = (typeof IMAGEN_TIPOS)[number];
+const isImagenTipo = (v: unknown): v is ImagenTipo => (IMAGEN_TIPOS as readonly unknown[]).includes(v);
+
+const MAX_IMAGEN_BYTES = 5 * 1024 * 1024; // límite de Claude por imagen
+const MAX_PDF_BYTES = 15 * 1024 * 1024; // en base64 crece ~33%, y Claude acepta hasta 32 MB por request
+const IMPORTACION_VIGENCIA_MS = 24 * 60 * 60 * 1000;
+const PREVIEW_MAX_LINEAS = 40;
+const PREGUNTA_IMPORTAR = "¿Los cargo?";
+const TELEGRAM_MAX_TEXTO = 4000; // el tope real es 4096
+
+type ArchivoMensaje =
+  | { tipo: "imagen"; mediaType: ImagenTipo; fileId: string; size?: number }
+  | { tipo: "pdf"; fileId: string; size?: number };
+
+function archivoDelMensaje(message: NonNullable<TelegramUpdate["message"]>): ArchivoMensaje | "no_soportado" | null {
+  // Telegram manda la foto en varios tamaños, de menor a mayor.
+  const foto = message.photo?.at(-1);
+  if (foto) return { tipo: "imagen", mediaType: "image/jpeg", fileId: foto.file_id, size: foto.file_size };
+
+  const doc = message.document;
+  if (!doc) return null;
+  if (doc.mime_type === "application/pdf") return { tipo: "pdf", fileId: doc.file_id, size: doc.file_size };
+  if (isImagenTipo(doc.mime_type)) {
+    return { tipo: "imagen", mediaType: doc.mime_type, fileId: doc.file_id, size: doc.file_size };
+  }
+  return "no_soportado";
+}
+
+// Saca los movimientos que ya estaban anotados (mismo tipo, monto y día), por
+// si el usuario cargó algunos a mano o manda dos veces el mismo resumen. Cuenta
+// repeticiones: si había un café de $2000 anotado y el resumen tiene dos, uno
+// es nuevo.
+async function separarRepetidos(
+  userId: string,
+  movimientos: CamposMovimiento[],
+): Promise<{ nuevos: CamposMovimiento[]; repetidos: number }> {
+  const hoy = hoyArgentinaISO();
+  const clave = (tipo: string, monto: number, fecha: string) => `${tipo}|${Number(monto)}|${fecha}`;
+  const fechas = movimientos.map((m) => m.fecha ?? hoy).sort();
+
+  const { data: existentes } = await supabaseAdmin
+    .from("movimientos")
+    .select("tipo, monto, created_at")
+    .eq("user_id", userId)
+    .gte("created_at", inicioDiaArgentina(fechas[0]))
+    .lte("created_at", finDiaArgentina(fechas[fechas.length - 1]));
+
+  const disponibles = new Map<string, number>();
+  for (const e of existentes ?? []) {
+    const k = clave(e.tipo, e.monto, fechaArgentinaISO(new Date(e.created_at)));
+    disponibles.set(k, (disponibles.get(k) ?? 0) + 1);
+  }
+
+  const nuevos: CamposMovimiento[] = [];
+  let repetidos = 0;
+  for (const m of movimientos) {
+    const k = clave(m.tipo, m.monto, m.fecha ?? hoy);
+    const n = disponibles.get(k) ?? 0;
+    if (n > 0) {
+      disponibles.set(k, n - 1);
+      repetidos++;
+    } else {
+      nuevos.push(m);
+    }
+  }
+  return { nuevos, repetidos };
+}
+
+function textoPreview(movimientos: CamposMovimiento[], repetidos: number, nota?: string): string {
+  const hoy = hoyArgentinaISO();
+  const ordenados = [...movimientos].sort((a, b) => (a.fecha ?? hoy).localeCompare(b.fecha ?? hoy));
+  const mostrados = ordenados.slice(0, PREVIEW_MAX_LINEAS);
+
+  const lineas = mostrados.map(
+    (m) =>
+      `${diaMes(m.fecha ?? hoy)} · ${m.tipo === "ingreso" ? "+" : ""}$${formatMonto(m.monto)} · ${capitalize(m.descripcion)} (${capitalize(m.categoria)})`,
+  );
+  if (ordenados.length > mostrados.length) lineas.push(`… y ${ordenados.length - mostrados.length} más`);
+
+  const gastos = movimientos.filter((m) => m.tipo === "gasto").reduce((s, m) => s + m.monto, 0);
+  const ingresos = movimientos.filter((m) => m.tipo === "ingreso").reduce((s, m) => s + m.monto, 0);
+  const totales = [`Gastos: $${formatMonto(gastos)}`, ingresos > 0 ? `Ingresos: $${formatMonto(ingresos)}` : ""]
+    .filter(Boolean)
+    .join(" · ");
+
+  const n = movimientos.length;
+  const partes = [
+    `Encontré ${n} movimiento${n === 1 ? "" : "s"} para cargar:`,
+    lineas.join("\n"),
+    totales,
+    repetidos > 0 ? `Salteé ${repetidos} que ya tenías anotado${repetidos === 1 ? "" : "s"}.` : "",
+    nota ?? "",
+  ].filter(Boolean);
+
+  const cuerpo = partes.join("\n\n").slice(0, TELEGRAM_MAX_TEXTO - PREGUNTA_IMPORTAR.length - 2);
+  return `${cuerpo}\n\n${PREGUNTA_IMPORTAR}`;
+}
+
+async function manejarResumen(chatId: number, userId: string, archivo: ArchivoMensaje | "no_soportado", caption: string) {
+  if (archivo === "no_soportado") {
+    await sendMessage(chatId, "Ese tipo de archivo no lo puedo leer. Mandame una foto, una captura o un PDF del resumen.");
+    return;
+  }
+
+  const maxBytes = archivo.tipo === "pdf" ? MAX_PDF_BYTES : MAX_IMAGEN_BYTES;
+  if (archivo.size && archivo.size > maxBytes) {
+    await sendMessage(chatId, `Ese archivo es muy pesado (máximo ${maxBytes / 1024 / 1024} MB). Probá mandándolo en partes.`);
+    return;
+  }
+
+  await sendMessage(chatId, "Dame un toque que leo el resumen…");
+
+  const buffer = await descargarArchivo(archivo.fileId);
+  if (!buffer || buffer.length > maxBytes) {
+    await sendMessage(chatId, "No pude bajar el archivo, probá mandarlo de nuevo.");
+    return;
+  }
+
+  const data = buffer.toString("base64");
+  const adjunto: Adjunto = archivo.tipo === "pdf" ? { tipo: "pdf", data } : { tipo: "imagen", mediaType: archivo.mediaType, data };
+  const resumen = await interpretarResumen(adjunto, caption);
+
+  if (resumen.movimientos.length === 0) {
+    await sendMessage(chatId, resumen.nota ?? "No encontré movimientos para cargar en eso.");
+    return;
+  }
+
+  const { nuevos, repetidos } = await separarRepetidos(userId, resumen.movimientos);
+  if (nuevos.length === 0) {
+    await sendMessage(
+      chatId,
+      [`Los ${repetidos} movimientos de ese resumen ya estaban anotados, no hay nada nuevo para cargar.`, resumen.nota]
+        .filter(Boolean)
+        .join("\n\n"),
+    );
+    return;
+  }
+
+  const { data: importacion, error } = await supabaseAdmin
+    .from("importaciones")
+    .insert({ user_id: userId, movimientos: nuevos })
+    .select("id")
+    .single();
+  if (error || !importacion) {
+    console.error("Insert importacion error", error);
+    await sendMessage(chatId, "Hubo un problema guardando lo que leí, probá de nuevo.");
+    return;
+  }
+
+  await sendMessage(chatId, textoPreview(nuevos, repetidos, resumen.nota), [
+    [
+      { text: `Cargar ${nuevos.length}`, callback_data: `imp:si:${importacion.id}` },
+      { text: "Cancelar", callback_data: `imp:no:${importacion.id}` },
+    ],
+  ]);
+}
+
+async function manejarCallback(cb: NonNullable<TelegramUpdate["callback_query"]>) {
+  const match = cb.data?.match(/^imp:(si|no):([0-9a-f-]{36})$/);
+  const mensaje = cb.message;
+  if (!match || !mensaje) {
+    await answerCallbackQuery(cb.id);
+    return;
+  }
+  const [, decision, importacionId] = match;
+  const chatId = mensaje.chat.id;
+  const textoOriginal = (mensaje.text ?? "").replace(`\n\n${PREGUNTA_IMPORTAR}`, "");
+
+  const userId = await usuarioDelChat(String(chatId));
+  if (!userId) {
+    await answerCallbackQuery(cb.id, "Este Telegram no está conectado a tu cuenta.");
+    return;
+  }
+
+  // Pasa de "pendiente" al estado final en un solo update: si se toca el botón
+  // dos veces (o Telegram reintenta), solo el primero encuentra la fila
+  // pendiente y los movimientos no se cargan duplicados.
+  const { data: importacion } = await supabaseAdmin
+    .from("importaciones")
+    .update({ estado: decision === "si" ? "confirmada" : "cancelada" })
+    .eq("id", importacionId)
+    .eq("user_id", userId)
+    .eq("estado", "pendiente")
+    .gte("created_at", new Date(Date.now() - IMPORTACION_VIGENCIA_MS).toISOString())
+    .select("movimientos")
+    .maybeSingle();
+
+  if (!importacion) {
+    await answerCallbackQuery(cb.id);
+    await editMessageText(chatId, mensaje.message_id, `${textoOriginal}\n\nEsto ya se procesó o venció. Si querés, mandame el resumen de nuevo.`);
+    return;
+  }
+
+  if (decision === "no") {
+    await answerCallbackQuery(cb.id);
+    await editMessageText(chatId, mensaje.message_id, `${textoOriginal}\n\nListo, no cargué nada.`);
+    return;
+  }
+
+  const movimientos = importacion.movimientos as CamposMovimiento[];
+  const { error } = await supabaseAdmin
+    .from("movimientos")
+    .insert(movimientos.map((m) => filaMovimiento(userId, m, "importado de un resumen por Telegram")));
+
+  if (error) {
+    console.error("Insert movimientos importados error", error);
+    // Vuelve a pendiente para que el botón siga sirviendo.
+    await supabaseAdmin.from("importaciones").update({ estado: "pendiente" }).eq("id", importacionId);
+    await answerCallbackQuery(cb.id, "Hubo un problema cargando los movimientos, probá de nuevo.");
+    return;
+  }
+
+  await answerCallbackQuery(cb.id, "Cargados");
+  await editMessageText(
+    chatId,
+    mensaje.message_id,
+    `${textoOriginal}\n\nListo, cargué ${movimientos.length} movimiento${movimientos.length === 1 ? "" : "s"}.`,
+  );
 }
 
 async function cargarContexto(userId: string): Promise<ContextoBot> {
@@ -134,22 +408,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const update = req.body as TelegramUpdate;
-  const message = update.message;
 
-  // Ack rápido para updates que no nos interesan (ediciones, callbacks, etc.)
-  if (!message?.text) {
+  // Botones de "Cargar" / "Cancelar" de una importación.
+  if (update.callback_query) {
+    try {
+      await manejarCallback(update.callback_query);
+    } catch (err) {
+      console.error("Callback error", err);
+      await answerCallbackQuery(update.callback_query.id, "Algo falló de mi lado, probá de nuevo.").catch(() => {});
+    }
+    res.status(200).send("OK");
+    return;
+  }
+
+  const message = update.message;
+  const archivo = message ? archivoDelMensaje(message) : null;
+
+  // Ack rápido para updates que no nos interesan (ediciones, stickers, etc.)
+  if (!message || (!message.text && !archivo)) {
     res.status(200).send("OK");
     return;
   }
 
   const chatId = message.chat.id;
   const chatIdStr = String(chatId);
-  const texto = message.text.trim();
+  const texto = (message.text ?? message.caption ?? "").trim();
 
   try {
     // "/start" o "/start <codigo>" — el deep link de vinculacion desde
     // Configuracion en la app manda "/start <codigo>" como texto del mensaje.
-    const startMatch = texto.match(/^\/start(?:@\S+)?(?:\s+(\S+))?/);
+    const startMatch = !archivo && texto.match(/^\/start(?:@\S+)?(?:\s+(\S+))?/);
     if (startMatch) {
       const codigo = startMatch[1];
 
@@ -212,13 +500,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const { data: vinculo } = await supabaseAdmin
-      .from("telegram_links")
-      .select("user_id")
-      .eq("chat_id", chatIdStr)
-      .maybeSingle();
+    const targetUserId = await usuarioDelChat(chatIdStr);
 
-    if (!vinculo) {
+    if (!targetUserId) {
       await sendMessage(
         chatId,
         "Todavía no conectaste este Telegram con tu cuenta de GasBot. Entrá a la app, tocá tu perfil y en Configuración conectá tu Telegram.",
@@ -226,8 +510,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).send("OK");
       return;
     }
-
-    const targetUserId = vinculo.user_id;
 
     // Rate limit: 20 mensajes por minuto por chat.
     const rateLimit = await checkRateLimit(chatIdStr);
@@ -241,6 +523,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    if (archivo) {
+      await manejarResumen(chatId, targetUserId, archivo, texto);
+      res.status(200).send("OK");
+      return;
+    }
+
     const contexto = await cargarContexto(targetUserId);
     const accion = await interpretarMensaje(texto, contexto);
 
@@ -248,23 +536,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "no_entendido": {
         await sendMessage(
           chatId,
-          "No entendí bien eso. Puedo anotar, corregir o borrar movimientos, manejar tus ahorros, o contarte tu balance.",
+          "No entendí bien eso. Puedo anotar, corregir o borrar movimientos, manejar tus ahorros, contarte tu balance, o cargar todo un resumen si me mandás la captura o el PDF.",
         );
         break;
       }
 
       case "crear_movimientos": {
         if (accion.movimientos.length > 0) {
-          const { error } = await supabaseAdmin.from("movimientos").insert(
-            accion.movimientos.map((m) => ({
-              user_id: targetUserId,
-              tipo: m.tipo,
-              monto: m.monto,
-              categoria: m.categoria,
-              descripcion: m.descripcion,
-              mensaje_original: texto,
-            })),
-          );
+          const { error } = await supabaseAdmin
+            .from("movimientos")
+            .insert(accion.movimientos.map((m) => filaMovimiento(targetUserId, m, texto)));
           if (error) {
             console.error("Insert movimientos error", error);
             await sendMessage(chatId, "Hubo un problema guardando el movimiento, probá de nuevo.");
@@ -273,7 +554,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         const detalle = accion.movimientos
-          .map((m) => `Anotado: $${formatMonto(m.monto)} - ${capitalize(m.descripcion)} (${capitalize(m.categoria)})`)
+          .map(
+            (m) =>
+              `Anotado: $${formatMonto(m.monto)} - ${capitalize(m.descripcion)} (${capitalize(m.categoria)})${
+                m.fecha ? ` · ${diaMes(m.fecha)}` : ""
+              }`,
+          )
           .join("\n");
         const respuesta = [detalle, accion.pregunta].filter(Boolean).join("\n\n");
         await sendMessage(chatId, respuesta);
@@ -522,36 +808,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await sendMessage(chatId, "No encontré ese recordatorio, probá de nuevo.");
           break;
         }
-        const { year, month } = hoyArgentina();
-        const periodoActual = periodoKey(year, month);
-        const [{ error: updateError }, { error: insertError }] = await Promise.all([
-          supabaseAdmin
-            .from("recordatorios")
-            .update({
-              periodo_actual: periodoActual,
-              pagado: true,
-              notificado_3dias: false,
-              notificado_vencimiento: false,
-            })
-            .eq("id", accion.id)
-            .eq("user_id", targetUserId),
-          supabaseAdmin.from("movimientos").insert({
-            user_id: targetUserId,
-            tipo: "gasto",
-            monto: recordatorio.monto,
-            categoria: recordatorio.categoria,
-            descripcion: recordatorio.nombre,
-            mensaje_original: texto,
-          }),
-        ]);
-        if (updateError || insertError) {
-          console.error("Marcar pagado recordatorio error", updateError ?? insertError);
+        if (!(await marcarPagado(supabaseAdmin, targetUserId, recordatorio, texto))) {
           await sendMessage(chatId, "Hubo un problema marcando el recordatorio como pagado, probá de nuevo.");
           break;
         }
         await sendMessage(
           chatId,
           `Marcado como pagado: ${capitalize(recordatorio.nombre)} - $${formatMonto(recordatorio.monto)}. También lo anoté como gasto.`,
+        );
+        break;
+      }
+
+      case "desmarcar_pagado_recordatorio": {
+        const recordatorio = contexto.recordatorios.find((r) => r.id === accion.id);
+        if (!recordatorio) {
+          await sendMessage(chatId, "No encontré ese recordatorio, probá de nuevo.");
+          break;
+        }
+        if (!recordatorio.pagado) {
+          await sendMessage(chatId, `${capitalize(recordatorio.nombre)} no figura como pagado este mes, no hay nada que desmarcar.`);
+          break;
+        }
+        if (!(await desmarcarPagado(supabaseAdmin, targetUserId, recordatorio))) {
+          await sendMessage(chatId, "Hubo un problema desmarcando el recordatorio, probá de nuevo.");
+          break;
+        }
+        await sendMessage(
+          chatId,
+          `Desmarcado: ${capitalize(recordatorio.nombre)} vuelve a pendiente este mes y borré el gasto que había anotado.`,
         );
         break;
       }

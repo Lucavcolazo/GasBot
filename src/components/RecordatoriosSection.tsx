@@ -3,7 +3,7 @@ import { formatCurrency } from "../lib/aggregate.ts";
 
 type StaggerStyle = CSSProperties & { "--stagger-index"?: number };
 import { hoyArgentina, estadoParaPeriodo, periodoKey } from "../../shared/recordatorios.ts";
-import { CheckIcon, PencilIcon, PlusIcon, TrashIcon } from "./icons.tsx";
+import { CheckIcon, PencilIcon, PlusIcon, TrashIcon, UndoIcon } from "./icons.tsx";
 import type { Recordatorio } from "../../shared/types.ts";
 
 interface Props {
@@ -12,9 +12,17 @@ interface Props {
   onEdit: (r: Recordatorio) => void;
   onDelete: (r: Recordatorio) => void;
   onMarcarPagado: (r: Recordatorio) => void;
+  onDesmarcarPagado: (r: Recordatorio) => void;
 }
 
-export function RecordatoriosSection({ recordatorios, onAdd, onEdit, onDelete, onMarcarPagado }: Props) {
+export function RecordatoriosSection({
+  recordatorios,
+  onAdd,
+  onEdit,
+  onDelete,
+  onMarcarPagado,
+  onDesmarcarPagado,
+}: Props) {
   const { year, month } = hoyArgentina();
   const periodoActual = periodoKey(year, month);
 
@@ -55,11 +63,22 @@ export function RecordatoriosSection({ recordatorios, onAdd, onEdit, onDelete, o
                       </p>
                     </div>
                     <div className="flex shrink-0 gap-1">
-                      {!pagado && (
+                      {pagado ? (
+                        <button
+                          type="button"
+                          onClick={() => onDesmarcarPagado(r)}
+                          aria-label="Desmarcar pagado"
+                          title="Desmarcar pagado"
+                          className="p-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                        >
+                          <UndoIcon />
+                        </button>
+                      ) : (
                         <button
                           type="button"
                           onClick={() => onMarcarPagado(r)}
                           aria-label="Marcar pagado"
+                          title="Marcar pagado"
                           className="p-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
                         >
                           <CheckIcon />
